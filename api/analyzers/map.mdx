@@ -1,0 +1,139 @@
+---
+title: AnalyzerMap
+description: Transform each data item into a new value
+---
+
+## Overview
+
+The `AnalyzerMap` analyzer transforms each item in your data into a new value. Each item is passed to the `map()` method, which returns the modified version of that item.
+
+The result is a new `Data` instance containing all the transformed items.
+
+## Class Signature
+
+```python
+class AnalyzerMap(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"map"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `map()` method in your analyzer:
+
+```python
+def map(self, item)
+```
+
+<ParamField path="item" type="any" required>
+  An individual element from the `Data.data` list
+</ParamField>
+
+<ResponseField name="return" type="any" required>
+  The new value after applying the mapping function. Can be the same type as the input or a different type.
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerMap
+
+class Product:
+    def __init__(self, name, price):
+        self.name = name
+        self.price = price
+
+class ApplyDiscount(AnalyzerMap):
+    def __init__(self, discount_percent):
+        self.discount_percent = discount_percent
+    
+    def map(self, product):
+        product.price = product.price * (1 - self.discount_percent / 100)
+        return product
+
+products = [
+    Product("Laptop", 1000),
+    Product("Mouse", 50),
+    Product("Keyboard", 150)
+]
+
+data = Data(products)
+discounted = data.map(ApplyDiscount(20))
+raw = discounted.getraw()
+
+# Result: all products with 20% discount applied
+```
+
+## Transforming to Different Types
+
+The `map()` method can return a completely different type:
+
+```python
+class ExtractNames(AnalyzerMap):
+    def map(self, product):
+        return product.name  # Convert Product objects to strings
+
+data = Data(products)
+names = data.map(ExtractNames())
+raw = names.getraw()
+
+# Result: ["Laptop", "Mouse", "Keyboard"]
+```
+
+## Enriching Data
+
+Use map to add computed fields or enrich objects:
+
+```python
+class AddTax(AnalyzerMap):
+    def __init__(self, tax_rate):
+        self.tax_rate = tax_rate
+    
+    def map(self, product):
+        product.total_price = product.price * (1 + self.tax_rate)
+        return product
+
+data = Data(products)
+enriched = data.map(AddTax(0.08))  # Add 8% tax
+
+# Each product now has a total_price attribute
+```
+
+## Chaining Map Operations
+
+Multiple map operations can be chained:
+
+```python
+data = Data(products)
+data = data.map(ApplyDiscount(20))
+data = data.map(AddTax(0.08))
+
+# Result: products with discount applied, then tax added
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="object">
+  A single item from the list of data objects being analyzed
+</ParamField>
+
+<ParamField path="Output" type="any">
+  The modified item. Can be a modified version of the input or a completely new object/value.
+</ParamField>
+
+## Key Considerations
+
+- The method is called once for each item in your dataset
+- You can modify the item in-place or create a new object
+- The return type doesn't have to match the input type
+- Map operations preserve the number of items (unlike filter)
+- Multiple map operations can be chained for complex transformations
+- Map creates a new `Data` instance and doesn't modify the original data
+
+## Related
+
+- [Data.map()](/api/data#map) - The method that uses this analyzer
+- [Filter Analyzer](/api/analyzers/filter) - For removing items instead of transforming them
+- [Transform Analyzer](/api/analyzers/transform) - For transformations that need access to the entire list

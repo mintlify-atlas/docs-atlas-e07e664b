@@ -1,0 +1,546 @@
+---
+title: Custom Analyzers
+description: Step-by-step guide to creating custom analyzer classes for your specific data processing needs
+---
+
+## Overview
+
+Analyzers are the building blocks of DataManipylator operations. Each analyzer class encapsulates specific business logic for transforming, filtering, or aggregating data. Creating custom analyzers allows you to build reusable, testable data processing components.
+
+<Note>
+Every analyzer must inherit from the appropriate base class and implement the corresponding method with the same name.
+</Note>
+
+## Analyzer Types
+
+DataManipylator provides seven analyzer types, each corresponding to a specific operation:
+
+| Operation | Analyzer Base Class | Method to Implement | Input | Output |
+|-----------|-------------------|---------------------|-------|--------|
+| `indexby()` | `AnalyzerIndexBy` | `indexby()` | Single item | Dictionary key (str) |
+| `map()` | `AnalyzerMap` | `map()` | Single item | Transformed item |
+| `filter()` | `AnalyzerFilter` | `filter()` | Single item | Boolean |
+| `reduce()` | `AnalyzerReduce` | `reduce()` | Two items | Aggregated value |
+| `transform()` | `AnalyzerTransform` | `transform()` | Entire list | New list |
+| `sort()` | `AnalyzerSort` | `sort()` | Two items | -1, 0, or 1 |
+| `process()` | `AnalyzerProcess` | `process()` | Entire list | Any type |
+
+## Creating AnalyzerFilter
+
+`AnalyzerFilter` determines which items to keep in your dataset.
+
+<Steps>
+  <Step title="Import the base class">
+    ```python
+    from datamanipylator.analyzers import AnalyzerFilter
+    ```
+  </Step>
+
+  <Step title="Create your class">
+    ```python
+    class ActiveUsersOnly(AnalyzerFilter):
+        def filter(self, user):
+            return user.is_active and user.last_login_days < 30
+    ```
+  </Step>
+
+  <Step title="Use it with Data">
+    ```python
+    from datamanipylator import Data
+    
+    data = Data(users)
+    active_users = data.filter(ActiveUsersOnly())
+    ```
+  </Step>
+</Steps>
+
+### With Parameters
+
+Add an `__init__` method to make your analyzer configurable:
+
+```python
+class MinimumThreshold(AnalyzerFilter):
+    def __init__(self, threshold, field_name):
+        self.threshold = threshold
+        self.field_name = field_name
+    
+    def filter(self, item):
+        value = getattr(item, self.field_name)
+        return value >= self.threshold
+
+# Usage
+data = Data(products)
+expensive = data.filter(MinimumThreshold(100.0, 'price'))
+```
+
+<Tip>
+Parameterized analyzers are more reusable - the same analyzer class can be configured differently for different use cases.
+</Tip>
+
+## Creating AnalyzerMap
+
+`AnalyzerMap` transforms each item in your dataset.
+
+```python
+from datamanipylator.analyzers import AnalyzerMap
+
+class ExtractEmailDomain(AnalyzerMap):
+    def map(self, user):
+        email = user.email
+        domain = email.split('@')[1] if '@' in email else 'unknown'
+        user.domain = domain
+        return user
+
+# Usage
+data = Data(users)
+with_domains = data.map(ExtractEmailDomain())
+```
+
+### Creating New Objects
+
+Your `map()` method can return completely new objects:
+
+```python
+class UserSummary:
+    def __init__(self, name, email, status):
+        self.name = name
+        self.email = email
+        self.status = status
+
+class CreateUserSummary(AnalyzerMap):
+    def map(self, user):
+        status = "active" if user.is_active else "inactive"
+        return UserSummary(user.name, user.email, status)
+
+# Usage
+data = Data(full_user_objects)
+summaries = data.map(CreateUserSummary())
+```
+
+## Creating AnalyzerIndexBy
+
+`AnalyzerIndexBy` groups items into a dictionary.
+
+```python
+from datamanipylator.analyzers import AnalyzerIndexBy
+
+class GroupByCountry(AnalyzerIndexBy):
+    def indexby(self, user):
+        return user.country
+
+# Usage
+data = Data(users)
+by_country = data.indexby(GroupByCountry())
+
+# Access specific group
+us_users = by_country['USA']
+```
+
+### Conditional Grouping
+
+```python
+class GroupByAccountTier(AnalyzerIndexBy):
+    def indexby(self, user):
+        if user.subscription_amount >= 100:
+            return "premium"
+        elif user.subscription_amount >= 20:
+            return "standard"
+        else:
+            return "free"
+```
+
+### Multiple Keys
+
+Return a list or tuple to place an item in multiple groups:
+
+```python
+class GroupByTags(AnalyzerIndexBy):
+    def indexby(self, article):
+        # Article can appear in multiple tag groups
+        return article.tags  # Returns list of tags
+
+# Usage
+articles = [
+    Article("Intro to Python", ["python", "tutorial"]),
+    Article("Advanced Python", ["python", "advanced"]),
+    Article("Intro to Java", ["java", "tutorial"])
+]
+
+data = Data(articles)
+by_tags = data.indexby(GroupByTags())
+
+# Results in:
+# {
+#   'python': [Intro to Python, Advanced Python],
+#   'tutorial': [Intro to Python, Intro to Java],
+#   'advanced': [Advanced Python],
+#   'java': [Intro to Java]
+# }
+```
+
+<Warning>
+If `indexby()` returns `None`, the item will be excluded from all groups.
+</Warning>
+
+## Creating AnalyzerReduce
+
+`AnalyzerReduce` aggregates items into a single value.
+
+```python
+from datamanipylator.analyzers import AnalyzerReduce
+
+class CalculateRevenue(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        # Handle initial value (numeric) vs order objects
+        if isinstance(v1, (int, float)):
+            return v1 + v2.amount
+        else:
+            return v1.amount + v2.amount
+
+# Usage
+data = Data(orders)
+total_revenue = data.reduce(CalculateRevenue(0))
+```
+
+<Note>
+Always pass an initial value to the `AnalyzerReduce` constructor. This value is used as the starting point for aggregation.
+</Note>
+
+### Complex Aggregation
+
+```python
+class AggregateStats(AnalyzerReduce):
+    def __init__(self):
+        super().__init__(init_value={'sum': 0, 'count': 0})
+    
+    def reduce(self, v1, v2):
+        if isinstance(v1, dict):
+            # v1 is accumulated stats, v2 is an item
+            return {
+                'sum': v1['sum'] + v2.value,
+                'count': v1['count'] + 1
+            }
+        else:
+            # First two items
+            return {
+                'sum': v1.value + v2.value,
+                'count': 2
+            }
+
+# Usage with post-processing
+data = Data(items)
+stats = data.reduce(AggregateStats())
+stats_dict = stats.getraw()
+average = stats_dict['sum'] / stats_dict['count']
+```
+
+## Creating AnalyzerTransform
+
+`AnalyzerTransform` operates on the entire list at once.
+
+```python
+from datamanipylator.analyzers import AnalyzerTransform
+
+class SampleEveryN(AnalyzerTransform):
+    def __init__(self, n):
+        self.n = n
+    
+    def transform(self, data_list):
+        return data_list[::self.n]
+
+# Usage
+data = Data(range(100))
+sampled = data.transform(SampleEveryN(10))
+print(sampled.getraw())  # [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+```
+
+### Deduplication Example
+
+```python
+class DeduplicateByField(AnalyzerTransform):
+    def __init__(self, field_name):
+        self.field_name = field_name
+    
+    def transform(self, data_list):
+        seen = set()
+        result = []
+        for item in data_list:
+            value = getattr(item, self.field_name)
+            if value not in seen:
+                seen.add(value)
+                result.append(item)
+        return result
+
+# Usage
+data = Data(users)
+unique_users = data.transform(DeduplicateByField('email'))
+```
+
+## Creating AnalyzerSort
+
+`AnalyzerSort` defines custom sorting logic.
+
+```python
+from datamanipylator.analyzers import AnalyzerSort
+
+class SortByPriority(AnalyzerSort):
+    def sort(self, item1, item2):
+        # Return -1 if item1 comes first
+        # Return 1 if item2 comes first  
+        # Return 0 if they're equal
+        if item1.priority > item2.priority:
+            return -1
+        elif item1.priority < item2.priority:
+            return 1
+        else:
+            return 0
+
+# Usage
+data = Data(tasks)
+sorted_tasks = data.sort(SortByPriority())
+```
+
+### Multi-Field Sorting
+
+```python
+class SortByDateThenPriority(AnalyzerSort):
+    def sort(self, item1, item2):
+        # Sort by date first
+        if item1.date < item2.date:
+            return -1
+        elif item1.date > item2.date:
+            return 1
+        else:
+            # Dates equal, sort by priority
+            if item1.priority > item2.priority:
+                return -1
+            elif item1.priority < item2.priority:
+                return 1
+            else:
+                return 0
+```
+
+<Tip>
+You can also use Python's comparison operators and return the result of comparing values, but explicit -1/0/1 returns make the logic clearer.
+</Tip>
+
+## Creating AnalyzerProcess
+
+`AnalyzerProcess` can return any type of result.
+
+```python
+from datamanipylator.analyzers import AnalyzerProcess
+
+class GenerateReport(AnalyzerProcess):
+    def process(self, data_list):
+        report = {
+            'total_items': len(data_list),
+            'by_status': {},
+            'value_stats': {}
+        }
+        
+        # Count by status
+        for item in data_list:
+            status = item.status
+            report['by_status'][status] = report['by_status'].get(status, 0) + 1
+        
+        # Calculate value statistics
+        values = [item.value for item in data_list]
+        report['value_stats'] = {
+            'min': min(values),
+            'max': max(values),
+            'avg': sum(values) / len(values)
+        }
+        
+        return report
+
+# Usage
+data = Data(items)
+report = data.process(GenerateReport())
+print(report.getraw())
+```
+
+### Export to Different Formats
+
+```python
+import json
+import csv
+from io import StringIO
+
+class ExportToJSON(AnalyzerProcess):
+    def __init__(self, fields):
+        self.fields = fields
+    
+    def process(self, data_list):
+        records = []
+        for item in data_list:
+            record = {field: getattr(item, field) for field in self.fields}
+            records.append(record)
+        return json.dumps(records, indent=2)
+
+class ExportToCSV(AnalyzerProcess):
+    def __init__(self, fields):
+        self.fields = fields
+    
+    def process(self, data_list):
+        output = StringIO()
+        writer = csv.DictWriter(output, fieldnames=self.fields)
+        writer.writeheader()
+        
+        for item in data_list:
+            row = {field: getattr(item, field) for field in self.fields}
+            writer.writerow(row)
+        
+        return output.getvalue()
+
+# Usage
+data = Data(users)
+json_output = data.process(ExportToJSON(['name', 'email']))
+csv_output = data.process(ExportToCSV(['name', 'email']))
+```
+
+## Best Practices
+
+### 1. Single Responsibility
+
+Each analyzer should do one thing well:
+
+<CodeGroup>
+```python Good
+class FilterByStatus(AnalyzerFilter):
+    def __init__(self, status):
+        self.status = status
+    
+    def filter(self, item):
+        return item.status == self.status
+
+class EnrichWithMetadata(AnalyzerMap):
+    def map(self, item):
+        item.processed_at = datetime.now()
+        return item
+```
+
+```python Bad
+class FilterAndEnrich(AnalyzerFilter):
+    def filter(self, item):
+        # Don't mix concerns!
+        item.processed_at = datetime.now()  # Side effect
+        return item.status == "active"
+```
+</CodeGroup>
+
+### 2. Make Analyzers Stateless
+
+Avoid storing mutable state in analyzer instances:
+
+```python
+# Good - configuration only
+class TopN(AnalyzerTransform):
+    def __init__(self, n):
+        self.n = n  # Configuration parameter
+    
+    def transform(self, data_list):
+        return sorted(data_list, key=lambda x: x.score, reverse=True)[:self.n]
+
+# Bad - mutable state
+class CountingFilter(AnalyzerFilter):
+    def __init__(self):
+        self.count = 0  # Mutable state - avoid!
+    
+    def filter(self, item):
+        self.count += 1  # Side effect - problematic
+        return item.value > 0
+```
+
+### 3. Add Docstrings
+
+```python
+class CalculateWeightedScore(AnalyzerMap):
+    """
+    Calculates a weighted score based on multiple factors.
+    
+    Args:
+        weights (dict): Dictionary mapping field names to weight values
+        
+    Example:
+        >>> scorer = CalculateWeightedScore({
+        ...     'quality': 0.4,
+        ...     'speed': 0.3,
+        ...     'price': 0.3
+        ... })
+        >>> data = Data(products)
+        >>> scored = data.map(scorer)
+    """
+    def __init__(self, weights):
+        self.weights = weights
+    
+    def map(self, item):
+        score = sum(
+            getattr(item, field) * weight 
+            for field, weight in self.weights.items()
+        )
+        item.weighted_score = score
+        return item
+```
+
+### 4. Handle Edge Cases
+
+```python
+class SafeDivide(AnalyzerMap):
+    def __init__(self, numerator_field, denominator_field):
+        self.numerator_field = numerator_field
+        self.denominator_field = denominator_field
+    
+    def map(self, item):
+        numerator = getattr(item, self.numerator_field)
+        denominator = getattr(item, self.denominator_field)
+        
+        # Handle division by zero
+        if denominator == 0:
+            item.ratio = None
+        else:
+            item.ratio = numerator / denominator
+        
+        return item
+```
+
+## Testing Custom Analyzers
+
+Analyzers are easy to unit test since they're just classes with methods:
+
+```python
+import unittest
+from datamanipylator import Data
+
+class TestMinimumThreshold(unittest.TestCase):
+    def test_filter_above_threshold(self):
+        class Item:
+            def __init__(self, value):
+                self.value = value
+        
+        items = [Item(5), Item(10), Item(15), Item(3)]
+        data = Data(items)
+        
+        filtered = data.filter(MinimumThreshold(8, 'value'))
+        result = filtered.getraw()
+        
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].value, 10)
+        self.assertEqual(result[1].value, 15)
+    
+    def test_empty_list(self):
+        data = Data([])
+        filtered = data.filter(MinimumThreshold(5, 'value'))
+        self.assertEqual(len(filtered.getraw()), 0)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="shield" href="/guides/error-handling">
+    Learn how to handle errors in your custom analyzers
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/data">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

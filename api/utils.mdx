@@ -1,0 +1,98 @@
+---
+title: "Utilities"
+description: "Utility functions for DataManipylator"
+---
+
+Utility functions that provide helpful functionality for working with DataManipylator.
+
+## display()
+
+Displays the results of data processing in a formatted, hierarchical view.
+
+<ParamField path="nested_dict" type="dict | list | any">
+  The data structure to display. Can be a nested dictionary, list, or any other value.
+</ParamField>
+
+<ParamField path="indent" type="int" default="0">
+  The initial indentation level (in spaces). Used internally for recursive formatting.
+</ParamField>
+
+### Description
+
+The `display()` function recursively prints nested data structures with proper indentation to make the hierarchy clear. It handles:
+
+- **Dictionaries**: Prints each key and recursively displays its value with increased indentation
+- **Lists**: Prints each item in the list
+- **Other types**: Prints the string representation of the value
+
+### Usage
+
+**Basic example:**
+
+```python
+from datamanipylator.utils import display
+
+results = {
+    'summary': {
+        'total': 100,
+        'processed': 95
+    },
+    'errors': ['Missing value in row 3', 'Invalid type in row 7']
+}
+
+display(results)
+```
+
+**Output:**
+
+```
+summary
+    total
+        100
+    processed
+        95
+errors
+    Missing value in row 3
+    Invalid type in row 7
+```
+
+**With nested structures:**
+
+```python
+analysis_results = {
+    'dataset': 'sales_data',
+    'statistics': {
+        'mean': 45.2,
+        'median': 42.0,
+        'mode': [40, 41]
+    },
+    'metadata': {
+        'rows': 1000,
+        'columns': ['date', 'amount', 'category']
+    }
+}
+
+display(analysis_results)
+```
+
+**Output:**
+
+```
+dataset
+    sales_data
+statistics
+    mean
+        45.2
+    median
+        42.0
+    mode
+        40
+        41
+metadata
+    rows
+        1000
+    columns
+        date
+        amount
+        category
+```

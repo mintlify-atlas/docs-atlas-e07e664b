@@ -1,0 +1,81 @@
+---
+title: Analyzers Overview
+description: Understand the analyzer pattern and available analyzer types in DataManipylator
+---
+
+## What are Analyzers?
+
+Analyzers are classes that implement specific rules or policies for data manipulation in DataManipylator. Each analyzer type corresponds to a method on the `Data` class and defines how that operation processes your data.
+
+All analyzers inherit from the base `Analyzer` class and must implement a specific method matching their analyzer type.
+
+## The Analyzer Pattern
+
+When you call a method on a `Data` object (like `map()`, `filter()`, or `reduce()`), you pass an analyzer object that implements the transformation logic:
+
+```python
+from datamanipylator import Data, AnalyzerFilter
+
+class LargeValues(AnalyzerFilter):
+    def filter(self, item):
+        return item.value > 100
+
+data = Data(my_list)
+filtered_data = data.filter(LargeValues())
+```
+
+This pattern separates the data structure from the transformation logic, making your code reusable and testable.
+
+## Available Analyzer Types
+
+DataManipylator provides seven analyzer types, each designed for a specific type of data manipulation:
+
+### Item-by-Item Processing
+
+These analyzers process each item in your data individually:
+
+- **[IndexBy](/api/analyzers/indexby)** - Group data into a dictionary based on a key function
+- **[Filter](/api/analyzers/filter)** - Keep or remove items based on a condition
+- **[Map](/api/analyzers/map)** - Transform each item into a new value
+
+### Comparative Processing
+
+These analyzers compare multiple items:
+
+- **[Reduce](/api/analyzers/reduce)** - Aggregate items into a single value
+- **[Sort](/api/analyzers/sort)** - Order items by comparing pairs
+
+### Bulk Processing
+
+These analyzers work with the entire dataset at once:
+
+- **[Transform](/api/analyzers/transform)** - Apply custom transformations to the entire list
+- **[Process](/api/analyzers/process)** - Perform any operation on the full dataset
+
+## Analyzer Reference Table
+
+| Container Method | Analyzer Type | Analyzer Method | Input | Output |
+|------------------|---------------|-----------------|-------|--------|
+| `indexby()` | `AnalyzerIndexBy` | `indexby()` | Single data object | Dictionary key (str) |
+| `map()` | `AnalyzerMap` | `map()` | Single data object | New data object |
+| `filter()` | `AnalyzerFilter` | `filter()` | Single data object | True/False |
+| `reduce()` | `AnalyzerReduce` | `reduce()` | Two data objects | Aggregated value |
+| `transform()` | `AnalyzerTransform` | `transform()` | All data objects (list) | New list of data objects |
+| `sort()` | `AnalyzerSort` | `sort()` | Two data objects | -1, 0, or 1 |
+| `process()` | `AnalyzerProcess` | `process()` | All data objects (list) | Anything |
+
+## Error Handling
+
+Passing an analyzer object that does not implement the required method will raise an `IncorrectAnalyzer` exception.
+
+## Next Steps
+
+Explore each analyzer type to learn how to implement them:
+
+- [IndexBy Analyzer](/api/analyzers/indexby)
+- [Filter Analyzer](/api/analyzers/filter)
+- [Map Analyzer](/api/analyzers/map)
+- [Reduce Analyzer](/api/analyzers/reduce)
+- [Transform Analyzer](/api/analyzers/transform)
+- [Sort Analyzer](/api/analyzers/sort)
+- [Process Analyzer](/api/analyzers/process)

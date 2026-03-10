@@ -1,0 +1,355 @@
+---
+title: Basic Operations
+description: Learn how to use DataManipylator's core operations to manipulate and transform your data
+---
+
+## Overview
+
+DataManipylator provides several fundamental operations for working with data collections. Each operation returns a new `Data` object, preserving immutability and enabling method chaining.
+
+<Note>
+All operations in DataManipylator are **immutable** - they never modify the original data object. This allows you to perform different manipulations from the same source object.
+</Note>
+
+## Core Operations
+
+### Map
+
+The `map()` operation applies a transformation function to each item in your data collection.
+
+<Steps>
+  <Step title="Create an AnalyzerMap">
+    Define a class that inherits from `AnalyzerMap` and implements the `map()` method:
+
+    ```python
+    from datamanipylator.analyzers import AnalyzerMap
+
+    class DoubleValue(AnalyzerMap):
+        def map(self, item):
+            return item * 2
+    ```
+  </Step>
+
+  <Step title="Apply the transformation">
+    ```python
+    from datamanipylator import Data
+
+    data = Data([1, 2, 3, 4, 5])
+    doubled = data.map(DoubleValue())
+    result = doubled.getraw()
+    # [2, 4, 6, 8, 10]
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+You can also use lambda functions directly with `map()` instead of creating an Analyzer class:
+
+```python
+data = Data([1, 2, 3, 4, 5])
+doubled = data.map(lambda x: x * 2)
+```
+</Tip>
+
+### Filter
+
+The `filter()` operation selects items that meet specific criteria.
+
+```python
+from datamanipylator.analyzers import AnalyzerFilter
+from datamanipylator import Data
+
+class KeepLargeValues(AnalyzerFilter):
+    def __init__(self, threshold):
+        self.threshold = threshold
+    
+    def filter(self, item):
+        return item.value > self.threshold
+
+# Example with objects
+class Item:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+items = [
+    Item("A", 10),
+    Item("B", 3),
+    Item("C", 15),
+    Item("D", 7)
+]
+
+data = Data(items)
+filtered = data.filter(KeepLargeValues(5))
+result = filtered.getraw()
+# Returns items with value > 5: A(10), C(15), D(7)
+```
+
+<Note>
+Like `map()`, the `filter()` method also accepts lambda functions for simple filtering operations.
+</Note>
+
+### Reduce
+
+The `reduce()` operation aggregates all items into a single value.
+
+```python
+from datamanipylator.analyzers import AnalyzerReduce
+from datamanipylator import Data
+
+class SumValues(AnalyzerReduce):
+    def reduce(self, item1, item2):
+        # Handle initial value (int) vs subsequent items
+        if isinstance(item1, int):
+            return item1 + item2.value
+        else:
+            return item1.value + item2.value
+
+data = Data(items)
+total = data.reduce(SumValues(0))
+result = total.getraw()
+# Returns sum of all values: 35
+```
+
+<Warning>
+`reduce()` returns a `_NonMutableData` object that cannot be processed further with other operations.
+</Warning>
+
+### IndexBy
+
+The `indexby()` operation groups items into a dictionary based on a key function.
+
+```python
+from datamanipylator.analyzers import AnalyzerIndexBy
+from datamanipylator import Data
+
+class GroupByCategory(AnalyzerIndexBy):
+    def indexby(self, item):
+        return item.category
+
+class Product:
+    def __init__(self, name, category, price):
+        self.name = name
+        self.category = category
+        self.price = price
+
+products = [
+    Product("Apple", "fruit", 1.20),
+    Product("Banana", "fruit", 0.50),
+    Product("Carrot", "vegetable", 0.80),
+    Product("Broccoli", "vegetable", 1.50)
+]
+
+data = Data(products)
+grouped = data.indexby(GroupByCategory())
+result = grouped.getraw()
+# {
+#   'fruit': [Apple, Banana],
+#   'vegetable': [Carrot, Broccoli]
+# }
+```
+
+<Tip>
+After using `indexby()`, you can continue applying operations to each group in the dictionary.
+</Tip>
+
+### Transform
+
+The `transform()` operation processes the entire list at once and returns a new list.
+
+```python
+from datamanipylator.analyzers import AnalyzerTransform
+from datamanipylator import Data
+
+class ReverseList(AnalyzerTransform):
+    def transform(self, data_list):
+        return list(reversed(data_list))
+
+data = Data([1, 2, 3, 4, 5])
+reversed_data = data.transform(ReverseList())
+result = reversed_data.getraw()
+# [5, 4, 3, 2, 1]
+```
+
+**Use Cases:**
+- Reversing or reordering entire collections
+- Batch operations that need access to all items
+- Complex transformations requiring context from multiple items
+
+### Sort
+
+The `sort()` operation orders items based on custom comparison logic.
+
+```python
+from datamanipylator.analyzers import AnalyzerSort
+from datamanipylator import Data
+
+class SortByValue(AnalyzerSort):
+    def sort(self, item1, item2):
+        if item1.value < item2.value:
+            return -1
+        elif item1.value > item2.value:
+            return 1
+        else:
+            return 0
+
+data = Data(items)
+sorted_data = data.sort(SortByValue())
+result = sorted_data.getraw()
+# Items sorted by value in ascending order
+```
+
+<Note>
+The `sort()` method expects a comparator function that returns -1, 0, or 1.
+</Note>
+
+### Process
+
+The `process()` operation allows custom processing that can return any type of result.
+
+```python
+from datamanipylator.analyzers import AnalyzerProcess
+from datamanipylator import Data
+
+class CalculateStats(AnalyzerProcess):
+    def process(self, data_list):
+        values = [item.value for item in data_list]
+        return {
+            'count': len(values),
+            'sum': sum(values),
+            'average': sum(values) / len(values),
+            'min': min(values),
+            'max': max(values)
+        }
+
+data = Data(items)
+stats = data.process(CalculateStats())
+result = stats.getraw()
+# {'count': 4, 'sum': 35, 'average': 8.75, 'min': 3, 'max': 15}
+```
+
+<Warning>
+`process()` returns a `_NonMutableData` object that cannot be processed further.
+</Warning>
+
+### Count
+
+The `count()` operation is a convenience method that returns the number of items.
+
+```python
+from datamanipylator import Data
+
+data = Data([1, 2, 3, 4, 5])
+count = data.count()
+result = count.getraw()
+# 5
+```
+
+<Note>
+`count()` is equivalent to using `process()` with a custom analyzer that returns `len(data_list)`.
+</Note>
+
+## Working with Results
+
+### Getting Raw Data
+
+Use the `getraw()` method to extract the underlying data from a `Data` object:
+
+```python
+data = Data([1, 2, 3])
+raw_result = data.getraw()
+# [1, 2, 3]
+```
+
+### Accessing Nested Dictionaries
+
+After using `indexby()`, you can access specific groups using bracket notation:
+
+```python
+data = Data(products)
+grouped = data.indexby(GroupByCategory())
+
+# Access a specific group
+fruits = grouped['fruit']
+fruit_list = fruits.getraw()
+
+# Or use the get() method with keys
+fruit_list = grouped.get('fruit')
+```
+
+## Complete Example
+
+Here's the example from the README demonstrating multiple operations:
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerIndexBy,
+    AnalyzerReduce
+)
+
+class C(object):
+    def __init__(self, name1, name2, value):
+        self.name1 = name1
+        self.name2 = name2
+        self.value = value
+
+l = [
+    C("foo", "test1", 4),
+    C("foo", "test2", 8),
+    C("bar", "test2", 8),
+    C("bar", "test2", 3),
+    C("bar", "test3", 1),
+    C("foo", "test3", 2),
+    C("foo", "test3", 2),
+    C("foo", "test1", 9),
+    C("bar", "test1", 9)
+]
+
+class TooLarge(AnalyzerFilter):
+    def __init__(self, x):
+        self.x = x
+    def filter(self, c):
+        return c.value <= self.x
+
+class ClassifyName1(AnalyzerIndexBy):
+    def indexby(self, c):
+        return c.name1
+
+class ClassifyName2(AnalyzerIndexBy):
+    def indexby(self, c):
+        if c.name2 == "test1":
+            return "first"
+        elif c.name2 == "test2":
+            return "second"
+        else:
+            return "third"
+
+class Total(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        if isinstance(v1, int):
+            return v1 + v2.value
+        else:
+            return v1.value + v2.value
+
+data = Data(l)
+data = data.filter(TooLarge(5))
+data = data.indexby(ClassifyName1())
+data = data.indexby(ClassifyName2())
+data = data.reduce(Total(0))
+out = data.getraw()
+print(out)
+# Output: nested dictionary with totals by category
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Chaining Operations" icon="link" href="/guides/chaining-operations">
+    Learn how to combine multiple operations into powerful data pipelines
+  </Card>
+  <Card title="Custom Analyzers" icon="code" href="/guides/custom-analyzers">
+    Create your own analyzer classes for custom business logic
+  </Card>
+</CardGroup>

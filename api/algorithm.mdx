@@ -1,0 +1,180 @@
+---
+title: "Algorithm"
+description: "Container class for chaining multiple data analysis operations"
+---
+
+## Overview
+
+The `Algorithm` class is a container that allows you to define and execute multi-step data processing pipelines. It holds multiple Analyzer objects and applies them sequentially to data, enabling complex transformations through simple composition.
+
+## Constructor
+
+```python
+Algorithm()
+```
+
+Creates a new empty Algorithm container.
+
+<ResponseField name="Algorithm" type="object">
+  A new Algorithm instance with an empty analyzer list.
+</ResponseField>
+
+### Example
+
+```python
+from datamanipylator.algorithm import Algorithm
+
+algo = Algorithm()
+```
+
+## Methods
+
+### add
+
+```python
+add(analyzer)
+```
+
+Adds an analyzer to the algorithm's processing pipeline. Analyzers are executed in the order they are added.
+
+<ParamField path="analyzer" type="Analyzer" required>
+  An Analyzer object (AnalyzerFilter, AnalyzerMap, AnalyzerReduce, etc.) to add to the pipeline.
+</ParamField>
+
+#### Example
+
+```python
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap
+
+class FilterPositive(AnalyzerFilter):
+    def filter(self, item):
+        return item > 0
+
+class Double(AnalyzerMap):
+    def map(self, item):
+        return item * 2
+
+algo = Algorithm()
+algo.add(FilterPositive())  # First step: filter positive numbers
+algo.add(Double())          # Second step: double the values
+```
+
+### analyze
+
+```python
+analyze(input_data)
+```
+
+Executes all analyzers in the pipeline sequentially, passing the output of each step as input to the next.
+
+<ParamField path="input_data" type="Data" required>
+  A Data object to process through the algorithm pipeline.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object containing the final result after all analyzers have been applied.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.data import Data
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap
+
+class FilterEven(AnalyzerFilter):
+    def filter(self, item):
+        return item % 2 == 0
+
+class Square(AnalyzerMap):
+    def map(self, item):
+        return item ** 2
+
+# Build the algorithm
+algo = Algorithm()
+algo.add(FilterEven())
+algo.add(Square())
+
+# Apply to data
+data = Data([1, 2, 3, 4, 5, 6])
+result = algo.analyze(data)
+# Result: Data([4, 16, 36])
+```
+
+## Complete Example
+
+Here's a comprehensive example demonstrating how to build a multi-step data processing pipeline:
+
+```python
+from datamanipylator.data import Data
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerMap,
+    AnalyzerIndexBy,
+    AnalyzerReduce
+)
+
+# Define custom analyzers
+class FilterActive(AnalyzerFilter):
+    def filter(self, item):
+        return item.get("status") == "active"
+
+class ExtractScore(AnalyzerMap):
+    def map(self, item):
+        return item.get("score", 0)
+
+class SumScores(AnalyzerReduce):
+    def initialvalue(self):
+        return 0
+    
+    def reduce(self, acc, item):
+        return acc + item
+
+# Create the algorithm
+processing_pipeline = Algorithm()
+processing_pipeline.add(FilterActive())
+processing_pipeline.add(ExtractScore())
+processing_pipeline.add(SumScores())
+
+# Sample data
+users = Data([
+    {"name": "Alice", "status": "active", "score": 95},
+    {"name": "Bob", "status": "inactive", "score": 78},
+    {"name": "Charlie", "status": "active", "score": 88},
+    {"name": "Diana", "status": "active", "score": 92}
+])
+
+# Execute the pipeline
+total_active_score = processing_pipeline.analyze(users)
+print(total_active_score.getraw())  # Output: 275
+```
+
+## Usage with Data.apply_algorithm
+
+The Algorithm class is designed to work seamlessly with the `Data.apply_algorithm()` method:
+
+```python
+from datamanipylator.data import Data
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap
+
+class FilterPositive(AnalyzerFilter):
+    def filter(self, item):
+        return item > 0
+
+class Triple(AnalyzerMap):
+    def map(self, item):
+        return item * 3
+
+# Build algorithm
+algo = Algorithm()
+algo.add(FilterPositive())
+algo.add(Triple())
+
+# Apply using Data method
+data = Data([-5, -2, 0, 3, 7, 10])
+result = data.apply_algorithm(algo)
+print(result.getraw())  # Output: [9, 21, 30]
+```

@@ -1,0 +1,221 @@
+---
+title: AnalyzerSort
+description: Define custom sorting logic for data items
+---
+
+## Overview
+
+The `AnalyzerSort` analyzer allows you to define custom sorting logic for your data. The `sort()` method compares two items and returns `-1`, `0`, or `1` to indicate their relative order.
+
+This follows the traditional comparator pattern used in many programming languages.
+
+## Class Signature
+
+```python
+class AnalyzerSort(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"sort"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `sort()` method in your analyzer:
+
+```python
+def sort(self, item1, item2)
+```
+
+<ParamField path="item1" type="any" required>
+  The first data object to compare
+</ParamField>
+
+<ParamField path="item2" type="any" required>
+  The second data object to compare
+</ParamField>
+
+<ResponseField name="return" type="int" required>
+  - Return `-1` if item1 should come before item2
+  - Return `0` if item1 and item2 are equal (order doesn't matter)
+  - Return `1` if item1 should come after item2
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerSort
+
+class Task:
+    def __init__(self, name, priority):
+        self.name = name
+        self.priority = priority  # 1 = high, 5 = low
+
+class SortByPriority(AnalyzerSort):
+    def sort(self, task1, task2):
+        if task1.priority < task2.priority:
+            return -1  # task1 has higher priority (lower number)
+        elif task1.priority > task2.priority:
+            return 1   # task2 has higher priority
+        else:
+            return 0   # same priority
+
+tasks = [
+    Task("Write docs", 2),
+    Task("Fix bug", 1),
+    Task("Refactor", 3),
+    Task("Code review", 1)
+]
+
+data = Data(tasks)
+sorted_data = data.sort(SortByPriority())
+raw = sorted_data.getraw()
+
+# Result: tasks ordered by priority (1, 1, 2, 3)
+```
+
+## Sorting in Descending Order
+
+```python
+class SortByScoreDescending(AnalyzerSort):
+    def sort(self, player1, player2):
+        if player1.score > player2.score:
+            return -1  # Higher score comes first
+        elif player1.score < player2.score:
+            return 1
+        else:
+            return 0
+```
+
+## Multi-Level Sorting
+
+Sort by multiple criteria:
+
+```python
+class SortByDepartmentThenSalary(AnalyzerSort):
+    def sort(self, emp1, emp2):
+        # First, compare departments (alphabetically)
+        if emp1.department < emp2.department:
+            return -1
+        elif emp1.department > emp2.department:
+            return 1
+        else:
+            # Same department, compare by salary (descending)
+            if emp1.salary > emp2.salary:
+                return -1
+            elif emp1.salary < emp2.salary:
+                return 1
+            else:
+                return 0
+```
+
+## Using Helper Functions
+
+```python
+class SortByDate(AnalyzerSort):
+    def sort(self, event1, event2):
+        # Assuming events have datetime objects
+        if event1.date < event2.date:
+            return -1
+        elif event1.date > event2.date:
+            return 1
+        else:
+            return 0
+```
+
+## Parameterized Sorting
+
+```python
+class SortByField(AnalyzerSort):
+    def __init__(self, field_name, reverse=False):
+        self.field_name = field_name
+        self.reverse = reverse
+    
+    def sort(self, item1, item2):
+        val1 = getattr(item1, self.field_name)
+        val2 = getattr(item2, self.field_name)
+        
+        result = 0
+        if val1 < val2:
+            result = -1
+        elif val1 > val2:
+            result = 1
+        
+        return -result if self.reverse else result
+
+# Sort by any field
+data.sort(SortByField('name'))  # Ascending by name
+data.sort(SortByField('price', reverse=True))  # Descending by price
+```
+
+## Complex Comparison Logic
+
+```python
+class SortByCategoryRank(AnalyzerSort):
+    def __init__(self):
+        # Define custom category ranking
+        self.category_order = {
+            'urgent': 1,
+            'important': 2,
+            'normal': 3,
+            'low': 4
+        }
+    
+    def sort(self, item1, item2):
+        rank1 = self.category_order.get(item1.category, 999)
+        rank2 = self.category_order.get(item2.category, 999)
+        
+        if rank1 < rank2:
+            return -1
+        elif rank1 > rank2:
+            return 1
+        else:
+            return 0
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="object">
+  Two data objects to compare. These are elements from your `Data.data` list.
+</ParamField>
+
+<ParamField path="Output" type="int">
+  Must return exactly `-1`, `0`, or `1` based on the comparison:
+  - `-1`: item1 comes before item2 in the sorted order
+  - `0`: item1 and item2 are equivalent for sorting purposes
+  - `1`: item1 comes after item2 in the sorted order
+</ParamField>
+
+## Key Considerations
+
+- The method will be called multiple times during the sorting process
+- Must return exactly `-1`, `0`, or `1` (not just any negative/positive number)
+- The comparison logic should be consistent (transitive)
+- Consider handling `None` values or missing attributes gracefully
+- For complex sorting, consider multi-level comparisons
+- The original data is not modified; a new sorted `Data` instance is created
+
+## Return Value Guidelines
+
+```python
+def sort(self, item1, item2):
+    # CORRECT:
+    return -1  # or 0 or 1
+    
+    # INCORRECT (don't return arbitrary numbers):
+    return item1.value - item2.value  # Could be -5, 7, etc.
+    
+    # If using subtraction, normalize it:
+    diff = item1.value - item2.value
+    if diff < 0:
+        return -1
+    elif diff > 0:
+        return 1
+    else:
+        return 0
+```
+
+## Related
+
+- [Data.sort()](/api/data#sort) - The method that uses this analyzer
+- [Transform Analyzer](/api/analyzers/transform) - For more complex reordering logic

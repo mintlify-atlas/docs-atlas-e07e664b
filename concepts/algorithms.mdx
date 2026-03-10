@@ -1,0 +1,516 @@
+---
+title: "Algorithms"
+description: "Composing multiple analyzers into reusable data processing pipelines"
+---
+
+## Overview
+
+The `Algorithm` class allows you to compose multiple analyzers into a single, reusable data processing pipeline. Instead of chaining method calls manually, you can define a sequence of operations and apply them as a unit.
+
+<Note>
+Think of Algorithms as "saved pipelines" - they encapsulate a series of data transformations that you can apply to any Data object.
+</Note>
+
+## Basic Usage
+
+### Creating an Algorithm
+
+```python
+from datamanipylator import Algorithm, Data
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerMap,
+    AnalyzerIndexBy
+)
+
+# Define your analyzers
+class FilterCompleted(AnalyzerFilter):
+    def filter(self, job):
+        return job.status == "completed"
+
+class ExtractDuration(AnalyzerMap):
+    def map(self, job):
+        return job.duration
+
+class GroupByRange(AnalyzerIndexBy):
+    def indexby(self, duration):
+        if duration < 60:
+            return "short"
+        elif duration < 300:
+            return "medium"
+        else:
+            return "long"
+
+# Create and configure the algorithm
+algo = Algorithm()
+algo.add(FilterCompleted())
+algo.add(ExtractDuration())
+algo.add(GroupByRange())
+
+# Apply to data
+jobs = Data([job1, job2, job3, ...])
+result = jobs.apply_algorithm(algo)
+
+# Result is _DictData with keys: "short", "medium", "long"
+print(result.getraw())
+```
+
+### Algorithm Structure
+
+The Algorithm class is elegantly simple:
+
+```python
+# From algorithm.py:1-16
+class Algorithm(object):
+    """
+    container for multiple Analyzer objects
+    """
+    def __init__(self):
+        self.analyzer_l = []  # List of analyzers
+
+    def add(self, analyzer):
+        self.analyzer_l.append(analyzer)
+
+    def analyze(self, input_data):
+        tmp_out = input_data
+        for analyzer in self.analyzer_l:
+            tmp_out = tmp_out.analyze(analyzer)
+        return tmp_out
+```
+
+<Info>
+Algorithms execute analyzers sequentially - each analyzer processes the output of the previous one.
+</Info>
+
+## Why Use Algorithms?
+
+### Reusability
+
+Define a pipeline once, use it many times:
+
+```python
+# Define the pipeline
+standard_job_analysis = Algorithm()
+standard_job_analysis.add(FilterValidJobs())
+standard_job_analysis.add(NormalizeFields())
+standard_job_analysis.add(GroupByRegion())
+standard_job_analysis.add(CalculateMetrics())
+
+# Reuse across different datasets
+monday_data = Data(monday_jobs)
+monday_results = monday_data.apply_algorithm(standard_job_analysis)
+
+tuesday_data = Data(tuesday_jobs)
+tuesday_results = tuesday_data.apply_algorithm(standard_job_analysis)
+
+week_data = Data(all_week_jobs)
+week_results = week_data.apply_algorithm(standard_job_analysis)
+```
+
+### Composition
+
+Build complex pipelines from simpler components:
+
+```python
+# Base preprocessing
+preprocessing = Algorithm()
+preprocessing.add(RemoveNulls())
+preprocessing.add(ValidateSchema())
+preprocessing.add(NormalizeTimestamps())
+
+# Analysis pipeline
+analysis = Algorithm()
+analysis.add(FilterByDateRange())
+analysis.add(GroupByCustomer())
+analysis.add(CalculateRevenue())
+
+# Combine them
+full_pipeline = Algorithm()
+for analyzer in preprocessing.analyzer_l:
+    full_pipeline.add(analyzer)
+for analyzer in analysis.analyzer_l:
+    full_pipeline.add(analyzer)
+
+result = data.apply_algorithm(full_pipeline)
+```
+
+### Testability
+
+Test individual analyzers and complete pipelines separately:
+
+```python
+import unittest
+
+class TestJobAnalysis(unittest.TestCase):
+    def setUp(self):
+        self.algo = Algorithm()
+        self.algo.add(FilterCompleted())
+        self.algo.add(ExtractDuration())
+        self.algo.add(GroupByRange())
+    
+    def test_filters_incomplete_jobs(self):
+        test_data = Data([
+            Job("j1", "completed", 30),
+            Job("j2", "running", 45),
+            Job("j3", "completed", 120)
+        ])
+        result = test_data.apply_algorithm(self.algo)
+        raw = result.getraw()
+        
+        # Should only have completed jobs
+        total_jobs = sum(len(v) for v in raw.values())
+        self.assertEqual(total_jobs, 2)
+    
+    def test_groups_by_duration(self):
+        test_data = Data([
+            Job("j1", "completed", 30),
+            Job("j2", "completed", 120),
+            Job("j3", "completed", 400)
+        ])
+        result = test_data.apply_algorithm(self.algo)
+        raw = result.getraw()
+        
+        self.assertIn("short", raw)
+        self.assertIn("medium", raw)
+        self.assertIn("long", raw)
+```
+
+### Documentation
+
+Algorithms serve as living documentation:
+
+```python
+class CustomerSegmentationPipeline:
+    """
+    Standard customer segmentation analysis pipeline.
+    
+    Steps:
+    1. Filter to active customers only
+    2. Calculate lifetime value
+    3. Normalize purchase frequency
+    4. Group into segments (bronze, silver, gold, platinum)
+    5. Calculate segment statistics
+    """
+    @staticmethod
+    def create():
+        algo = Algorithm()
+        algo.add(FilterActiveCustomers())
+        algo.add(CalculateLifetimeValue())
+        algo.add(NormalizePurchaseFrequency())
+        algo.add(GroupIntoSegments())
+        algo.add(CalculateSegmentStats())
+        return algo
+
+# Usage is self-documenting
+result = customer_data.apply_algorithm(
+    CustomerSegmentationPipeline.create()
+)
+```
+
+## Algorithm Patterns
+
+### Map-Reduce Pattern
+
+```python
+map_reduce = Algorithm()
+map_reduce.add(FilterRelevantData())
+map_reduce.add(TransformItems())           # Map phase
+map_reduce.add(GroupByKey())               # Shuffle phase
+map_reduce.add(AggregateByGroup())         # Reduce phase
+
+result = data.apply_algorithm(map_reduce)
+```
+
+### ETL Pattern
+
+```python
+etl_pipeline = Algorithm()
+
+# Extract: Get relevant subset
+etl_pipeline.add(FilterByDateRange())
+etl_pipeline.add(FilterBySource())
+
+# Transform: Clean and reshape
+etl_pipeline.add(ValidateData())
+etl_pipeline.add(NormalizeFields())
+etl_pipeline.add(EnrichWithMetadata())
+
+# Load: Prepare for storage/analysis
+etl_pipeline.add(GroupByPartitionKey())
+etl_pipeline.add(FormatForStorage())
+
+result = raw_data.apply_algorithm(etl_pipeline)
+```
+
+### Progressive Filtering Pattern
+
+```python
+funnel_analysis = Algorithm()
+funnel_analysis.add(FilterVisitors())        # All visitors
+funnel_analysis.add(FilterSignups())         # Narrower: only signups
+funnel_analysis.add(FilterActivations())     # Narrower: only activated
+funnel_analysis.add(FilterPurchasers())      # Narrowest: only purchased
+funnel_analysis.add(CalculateConversion())   # Final metrics
+
+result = events.apply_algorithm(funnel_analysis)
+```
+
+## Advanced Techniques
+
+### Conditional Logic
+
+Use analyzers that implement conditional behavior:
+
+```python
+class ConditionalFilter(AnalyzerFilter):
+    def __init__(self, condition_field, threshold):
+        self.condition_field = condition_field
+        self.threshold = threshold
+    
+    def filter(self, item):
+        value = getattr(item, self.condition_field)
+        # Different logic based on item type
+        if hasattr(item, 'item_type'):
+            if item.item_type == 'A':
+                return value > self.threshold
+            else:
+                return value < self.threshold
+        return True
+
+algo = Algorithm()
+algo.add(ConditionalFilter('score', 50))
+```
+
+### Branching Pipelines
+
+Apply different algorithms to different subsets:
+
+```python
+# Split data first
+data_by_type = data.indexby(GroupByType())
+
+# Different algorithm for each type
+type_a_algo = Algorithm()
+type_a_algo.add(ProcessTypeA())
+type_a_algo.add(AnalyzeTypeA())
+
+type_b_algo = Algorithm()
+type_b_algo.add(ProcessTypeB())
+type_b_algo.add(AnalyzeTypeB())
+
+# Apply conditionally
+type_a_result = data_by_type['A'].apply_algorithm(type_a_algo)
+type_b_result = data_by_type['B'].apply_algorithm(type_b_algo)
+```
+
+### Parameterized Algorithms
+
+```python
+def create_analysis_pipeline(threshold, grouping_key, aggregation_func):
+    """
+    Factory function for creating parameterized algorithms.
+    """
+    algo = Algorithm()
+    algo.add(FilterAboveThreshold(threshold))
+    algo.add(GroupBy(grouping_key))
+    algo.add(AggregateWith(aggregation_func))
+    return algo
+
+# Create different variations
+low_threshold_analysis = create_analysis_pipeline(
+    threshold=10,
+    grouping_key='region',
+    aggregation_func='sum'
+)
+
+high_threshold_analysis = create_analysis_pipeline(
+    threshold=100,
+    grouping_key='customer_segment',
+    aggregation_func='average'
+)
+```
+
+## Algorithm Best Practices
+
+<Accordion title="Order Matters">
+The sequence of analyzers affects both correctness and performance:
+
+```python
+# Bad: Filter after expensive operations
+bad_algo = Algorithm()
+bad_algo.add(ExpensiveTransform())  # Processes everything
+bad_algo.add(AnotherExpensiveOp())  # Still processing everything
+bad_algo.add(FilterSmallSubset())   # Now throws away 90%!
+
+# Good: Filter early
+good_algo = Algorithm()
+good_algo.add(FilterSmallSubset())   # Reduces to 10% immediately
+good_algo.add(ExpensiveTransform())  # Only processes 10%
+good_algo.add(AnotherExpensiveOp())  # Still only 10%
+```
+</Accordion>
+
+<Accordion title="Keep Analyzers Independent">
+Each analyzer should work regardless of what came before:
+
+```python
+# Bad: Analyzer depends on previous step
+class AssumesDurationField(AnalyzerMap):
+    def map(self, item):
+        return item.duration * 2  # Assumes item has 'duration'
+
+# Good: Analyzer validates assumptions
+class SafeDurationDouble(AnalyzerMap):
+    def map(self, item):
+        if not hasattr(item, 'duration'):
+            raise ValueError("Item missing 'duration' field")
+        return item.duration * 2
+```
+</Accordion>
+
+<Accordion title="Make Algorithms Immutable">
+Once created, don't modify algorithms:
+
+```python
+# Bad: Modifying shared algorithm
+shared_algo = Algorithm()
+shared_algo.add(BaseFilter())
+
+def process_data_type_a(data):
+    shared_algo.add(ProcessTypeA())  # Modifies shared object!
+    return data.apply_algorithm(shared_algo)
+
+# Good: Create new algorithms
+base_algo = Algorithm()
+base_algo.add(BaseFilter())
+
+def process_data_type_a(data):
+    type_a_algo = Algorithm()
+    for analyzer in base_algo.analyzer_l:
+        type_a_algo.add(analyzer)
+    type_a_algo.add(ProcessTypeA())
+    return data.apply_algorithm(type_a_algo)
+```
+</Accordion>
+
+<Accordion title="Name Algorithms Descriptively">
+Use names that explain what the algorithm does:
+
+```python
+# Bad: Generic names
+algo1 = Algorithm()
+algo2 = Algorithm()
+process_algo = Algorithm()
+
+# Good: Descriptive names
+customer_lifetime_value_pipeline = Algorithm()
+fraud_detection_analysis = Algorithm()
+daily_revenue_summary = Algorithm()
+```
+</Accordion>
+
+## Debugging Algorithms
+
+### Inspect Algorithm Steps
+
+```python
+algo = Algorithm()
+algo.add(Step1())
+algo.add(Step2())
+algo.add(Step3())
+
+# See what analyzers are in the pipeline
+print(f"Algorithm has {len(algo.analyzer_l)} steps:")
+for i, analyzer in enumerate(algo.analyzer_l):
+    print(f"  {i+1}. {analyzer.__class__.__name__}")
+```
+
+### Test Each Step
+
+```python
+# Test the full algorithm
+full_result = data.apply_algorithm(algo)
+
+# Test partial pipelines to isolate issues
+partial_algo = Algorithm()
+partial_algo.add(algo.analyzer_l[0])  # Just first step
+step1_result = data.apply_algorithm(partial_algo)
+
+partial_algo.add(algo.analyzer_l[1])  # First two steps
+step2_result = data.apply_algorithm(partial_algo)
+
+# Compare intermediate results
+print(f"After step 1: {step1_result.count().getraw()} items")
+print(f"After step 2: {step2_result.count().getraw()} items")
+```
+
+### Log Algorithm Execution
+
+```python
+class LoggingAlgorithm(Algorithm):
+    def analyze(self, input_data):
+        tmp_out = input_data
+        for i, analyzer in enumerate(self.analyzer_l):
+            print(f"Step {i+1}: Applying {analyzer.__class__.__name__}")
+            print(f"  Input size: {tmp_out.count().getraw()}")
+            
+            tmp_out = tmp_out.analyze(analyzer)
+            
+            print(f"  Output size: {tmp_out.count().getraw()}")
+        return tmp_out
+
+logging_algo = LoggingAlgorithm()
+logging_algo.add(Filter1())
+logging_algo.add(Map1())
+logging_algo.add(IndexBy1())
+
+result = data.apply_algorithm(logging_algo)
+```
+
+## When to Use Algorithms
+
+<CardGroup cols={2}>
+  <Card title="Repeated Pipelines" icon="repeat">
+    When you apply the same sequence of operations to multiple datasets
+  </Card>
+  <Card title="Complex Logic" icon="diagram-project">
+    When a pipeline has 4+ steps and would be hard to read as chained calls
+  </Card>
+  <Card title="Shared Logic" icon="share-nodes">
+    When multiple parts of your codebase need the same processing
+  </Card>
+  <Card title="Testing" icon="vial">
+    When you want to unit test the complete pipeline as a single unit
+  </Card>
+</CardGroup>
+
+## When NOT to Use Algorithms
+
+<Warning>
+For simple one-off operations, direct method chaining is clearer:
+</Warning>
+
+```python
+# Overkill: Using Algorithm for simple operation
+algo = Algorithm()
+algo.add(SimpleFilter())
+result = data.apply_algorithm(algo)
+
+# Better: Direct call
+result = data.filter(SimpleFilter())
+
+# Overkill: Algorithm for unique one-time pipeline
+algo = Algorithm()
+algo.add(VerySpecificFilter())
+algo.add(OneTimeTransform())
+result = data.apply_algorithm(algo)
+
+# Better: Direct chaining
+result = data.filter(VerySpecificFilter()).map(OneTimeTransform())
+```
+
+## Related Concepts
+
+- [Data Class](/concepts/data-class) - The apply_algorithm() method
+- [Analyzers](/concepts/analyzers) - The building blocks of algorithms
+- [Immutability](/concepts/immutability) - Why algorithms don't modify the original data

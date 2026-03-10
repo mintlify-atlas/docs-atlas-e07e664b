@@ -1,80 +1,291 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Learn the fundamentals of DataManipylator with a practical example
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+DataManipylator is a functional data manipulation library that enables you to process lists of objects through immutable transformations. The core concept revolves around the `Data` class and `Analyzer` objects that define transformation rules.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  All Data operations return new instances - the original data is never modified. This functional approach allows you to perform different manipulations from the same source object.
 </Note>
+
+## Your First Data Pipeline
+
+Let's build a complete example that demonstrates the core features of DataManipylator.
+
+<Steps>
+  <Step title="Import the library">
+    Start by importing the Data class and Analyzer types:
+    
+    ```python
+    from datamanipylator.data import Data
+    from datamanipylator.analyzers import (
+        AnalyzerFilter,
+        AnalyzerIndexBy,
+        AnalyzerMap,
+        AnalyzerReduce
+    )
+    ```
+  </Step>
+
+  <Step title="Create sample data">
+    Let's create a list of custom objects to work with:
+    
+    ```python
+    class Product:
+        def __init__(self, name, category, price, quantity):
+            self.name = name
+            self.category = category
+            self.price = price
+            self.quantity = quantity
+        
+        def __repr__(self):
+            return f"Product({self.name}, {self.category}, ${self.price}, qty={self.quantity})"
+
+    products = [
+        Product("Laptop", "Electronics", 1200, 5),
+        Product("Mouse", "Electronics", 25, 50),
+        Product("Desk", "Furniture", 350, 10),
+        Product("Chair", "Furniture", 200, 15),
+        Product("Monitor", "Electronics", 300, 8),
+        Product("Lamp", "Furniture", 45, 30),
+    ]
+
+    # Wrap data in a Data object
+    data = Data(products)
+    ```
+  </Step>
+
+  <Step title="Filter the data">
+    Create a custom Analyzer to filter products by price:
+    
+    ```python
+    class AffordableItems(AnalyzerFilter):
+        def __init__(self, max_price):
+            self.max_price = max_price
+        
+        def filter(self, product):
+            return product.price <= self.max_price
+
+    # Filter products under $400
+    affordable = data.filter(AffordableItems(400))
+    print(f"Affordable items: {affordable.count().getraw()}")  # Output: 5
+    ```
+
+    <Tip>
+      The `filter()` method returns a new Data object, leaving the original unchanged.
+    </Tip>
+  </Step>
+
+  <Step title="Group data with indexby">
+    Use `indexby()` to organize products by category:
+    
+    ```python
+    class GroupByCategory(AnalyzerIndexBy):
+        def indexby(self, product):
+            return product.category
+
+    # Group products by category
+    by_category = affordable.indexby(GroupByCategory())
+    
+    # Access specific categories
+    electronics = by_category["Electronics"]
+    furniture = by_category["Furniture"]
+    
+    print(f"Electronics count: {electronics.count().getraw()}")  # Output: 2
+    print(f"Furniture count: {furniture.count().getraw()}")      # Output: 3
+    ```
+  </Step>
+
+  <Step title="Transform data with map">
+    Apply a 10% discount to all products:
+    
+    ```python
+    class ApplyDiscount(AnalyzerMap):
+        def __init__(self, discount_pct):
+            self.discount_pct = discount_pct
+        
+        def map(self, product):
+            product.price = product.price * (1 - self.discount_pct / 100)
+            return product
+
+    # Apply discount to electronics
+    discounted = electronics.map(ApplyDiscount(10))
+    ```
+  </Step>
+
+  <Step title="Aggregate with reduce">
+    Calculate total inventory value:
+    
+    ```python
+    class TotalValue(AnalyzerReduce):
+        def reduce(self, item1, item2):
+            # Handle both initial value (int) and Product objects
+            if isinstance(item1, int):
+                return item1 + (item2.price * item2.quantity)
+            else:
+                return (item1.price * item1.quantity) + (item2.price * item2.quantity)
+
+    # Calculate total value
+    total = data.reduce(TotalValue(init_value=0))
+    print(f"Total inventory value: ${total.getraw():.2f}")
+    ```
+  </Step>
+
+  <Step title="Chain operations">
+    DataManipylator excels at chaining operations:
+    
+    ```python
+    # Complex pipeline: filter -> group -> count
+    result = (data
+        .filter(AffordableItems(400))
+        .indexby(GroupByCategory())
+        .count()
+    )
+    
+    # Get raw results
+    category_counts = result.getraw()
+    print(category_counts)  # {'Electronics': 2, 'Furniture': 3}
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's the full working example:
+
+<CodeGroup>
+```python Complete Pipeline
+from datamanipylator.data import Data
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerIndexBy,
+    AnalyzerReduce
+)
+
+class Product:
+    def __init__(self, name, category, price, quantity):
+        self.name = name
+        self.category = category
+        self.price = price
+        self.quantity = quantity
+
+class AffordableItems(AnalyzerFilter):
+    def __init__(self, max_price):
+        self.max_price = max_price
+    
+    def filter(self, product):
+        return product.price <= self.max_price
+
+class GroupByCategory(AnalyzerIndexBy):
+    def indexby(self, product):
+        return product.category
+
+class TotalValue(AnalyzerReduce):
+    def reduce(self, item1, item2):
+        if isinstance(item1, int):
+            return item1 + (item2.price * item2.quantity)
+        else:
+            return (item1.price * item1.quantity) + (item2.price * item2.quantity)
+
+# Create data
+products = [
+    Product("Laptop", "Electronics", 1200, 5),
+    Product("Mouse", "Electronics", 25, 50),
+    Product("Desk", "Furniture", 350, 10),
+    Product("Chair", "Furniture", 200, 15),
+    Product("Monitor", "Electronics", 300, 8),
+    Product("Lamp", "Furniture", 45, 30),
+]
+
+data = Data(products)
+
+# Process data
+result = (data
+    .filter(AffordableItems(400))
+    .indexby(GroupByCategory())
+    .reduce(TotalValue(init_value=0))
+)
+
+# Get results
+output = result.getraw()
+print(output)  # {'Electronics': 3650, 'Furniture': 5350}
+```
+
+```python Using Lambda Functions
+# You can also use lambda functions instead of Analyzer classes
+from datamanipylator.data import Data
+
+data = Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+
+# Filter even numbers
+evens = data.filter(lambda x: x % 2 == 0)
+
+# Double each number
+doubled = evens.map(lambda x: x * 2)
+
+# Sum all numbers
+total = doubled.reduce(lambda x, y: x + y)
+
+print(total.getraw())  # Output: 60
+```
+</CodeGroup>
+
+## Key Concepts
+
+<CardGroup cols={2}>
+  <Card title="Immutability" icon="lock">
+    Every operation returns a new Data object. Your original data remains unchanged, allowing multiple transformation branches from a single source.
+  </Card>
+  
+  <Card title="Analyzer Pattern" icon="gear">
+    Analyzers encapsulate transformation logic. Each Analyzer type (Filter, Map, Reduce, etc.) implements a specific method that defines the transformation rules.
+  </Card>
+  
+  <Card title="Method Chaining" icon="link">
+    Chain operations together for readable, functional-style data pipelines. Each method returns a Data object ready for the next transformation.
+  </Card>
+  
+  <Card title="Type Safety" icon="shield">
+    DataManipylator validates that Analyzers match their target methods, raising `IncorrectAnalyzer` exceptions if there's a mismatch.
+  </Card>
+</CardGroup>
+
+## Understanding getraw()
+
+The `getraw()` method extracts the underlying data from a Data object:
+
+```python
+data = Data([1, 2, 3])
+print(type(data))         # <class 'datamanipylator.data.Data'>
+print(type(data.getraw())) # <class 'list'>
+print(data.getraw())      # [1, 2, 3]
+```
+
+<Warning>
+  Some operations like `reduce()` and `process()` return `_NonMutableData` objects that cannot be further processed with Data methods. Always use `getraw()` to extract final results.
+</Warning>
+
+## Next Steps
+
+Now that you understand the basics, explore more advanced features:
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/data-class">
+    Deep dive into Data objects, Analyzers, and the library architecture
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/data">
+    Complete reference for all classes and methods
+  </Card>
+  
+  <Card title="Chaining Operations" icon="link" href="/guides/chaining-operations">
+    Learn about nested indexby operations and complex pipelines
+  </Card>
+  
+  <Card title="Custom Analyzers" icon="wrench" href="/guides/custom-analyzers">
+    Create custom analyzer classes for your use cases
+  </Card>
+</CardGroup>

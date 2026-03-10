@@ -1,0 +1,245 @@
+---
+title: AnalyzerProcess
+description: Perform custom operations on entire datasets with flexible output
+---
+
+## Overview
+
+The `AnalyzerProcess` analyzer provides maximum flexibility for data processing. The `process()` method receives the entire list of data and can return anything - a summary, a report, a side effect, or any custom output.
+
+Unlike other analyzers, the result of `process()` cannot be further processed with Data methods. It's a terminal operation designed for final output or side effects.
+
+## Class Signature
+
+```python
+class AnalyzerProcess(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"process"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `process()` method in your analyzer:
+
+```python
+def process(self)
+```
+
+<ResponseField name="return" type="any">
+  Can return anything - statistics, formatted output, side effects, or any custom result
+</ResponseField>
+
+**Note:** The docstring in the source code mentions `l` (list) parameter, but the actual signature takes no parameters. The analyzer typically accesses data through other means (e.g., passed during initialization or via class attributes).
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerProcess
+
+class Employee:
+    def __init__(self, name, salary, department):
+        self.name = name
+        self.salary = salary
+        self.department = department
+
+class SalaryReport(AnalyzerProcess):
+    def __init__(self, employee_list):
+        self.employees = employee_list
+    
+    def process(self):
+        total = sum(e.salary for e in self.employees)
+        avg = total / len(self.employees)
+        highest = max(self.employees, key=lambda e: e.salary)
+        
+        return {
+            'total_payroll': total,
+            'average_salary': avg,
+            'highest_paid': highest.name,
+            'employee_count': len(self.employees)
+        }
+
+employees = [
+    Employee("Alice", 120000, "Engineering"),
+    Employee("Bob", 90000, "Sales"),
+    Employee("Charlie", 110000, "Engineering")
+]
+
+data = Data(employees)
+report = data.process(SalaryReport(employees))
+result = report.getraw()
+
+# Result: {'total_payroll': 320000, 'average_salary': 106666.67, ...}
+```
+
+## Generating Formatted Output
+
+```python
+class MarkdownReport(AnalyzerProcess):
+    def __init__(self, items):
+        self.items = items
+    
+    def process(self):
+        lines = ["# Data Summary\n"]
+        lines.append(f"Total items: {len(self.items)}\n")
+        lines.append("\n## Items:\n")
+        
+        for i, item in enumerate(self.items, 1):
+            lines.append(f"{i}. {item.name} - ${item.value}\n")
+        
+        return ''.join(lines)
+
+data = Data(items)
+markdown = data.process(MarkdownReport(items))
+print(markdown.getraw())
+```
+
+## Side Effects
+
+Use process for operations that don't need a return value:
+
+```python
+class ExportToFile(AnalyzerProcess):
+    def __init__(self, data_list, filename):
+        self.data_list = data_list
+        self.filename = filename
+    
+    def process(self):
+        with open(self.filename, 'w') as f:
+            for item in self.data_list:
+                f.write(f"{item.name},{item.value}\n")
+        
+        return f"Exported {len(self.data_list)} items to {self.filename}"
+
+data = Data(items)
+data.process(ExportToFile(items, 'output.csv'))
+```
+
+## Statistical Analysis
+
+```python
+class Statistics(AnalyzerProcess):
+    def __init__(self, values):
+        self.values = values
+    
+    def process(self):
+        nums = [v.amount for v in self.values]
+        n = len(nums)
+        
+        mean = sum(nums) / n
+        variance = sum((x - mean) ** 2 for x in nums) / n
+        std_dev = variance ** 0.5
+        
+        sorted_nums = sorted(nums)
+        median = sorted_nums[n // 2] if n % 2 else \
+                 (sorted_nums[n // 2 - 1] + sorted_nums[n // 2]) / 2
+        
+        return {
+            'count': n,
+            'mean': mean,
+            'median': median,
+            'std_dev': std_dev,
+            'min': min(nums),
+            'max': max(nums)
+        }
+```
+
+## Aggregating Multiple Metrics
+
+```python
+class DashboardMetrics(AnalyzerProcess):
+    def __init__(self, events):
+        self.events = events
+    
+    def process(self):
+        by_type = {}
+        by_date = {}
+        
+        for event in self.events:
+            # Count by type
+            by_type[event.type] = by_type.get(event.type, 0) + 1
+            
+            # Count by date
+            date_key = event.timestamp.date()
+            by_date[date_key] = by_date.get(date_key, 0) + 1
+        
+        return {
+            'total_events': len(self.events),
+            'by_type': by_type,
+            'by_date': by_date,
+            'date_range': {
+                'start': min(e.timestamp for e in self.events),
+                'end': max(e.timestamp for e in self.events)
+            }
+        }
+```
+
+## Validation and Quality Checks
+
+```python
+class DataQualityCheck(AnalyzerProcess):
+    def __init__(self, records):
+        self.records = records
+    
+    def process(self):
+        issues = []
+        
+        for i, record in enumerate(self.records):
+            if not record.name:
+                issues.append(f"Record {i}: missing name")
+            if record.age < 0:
+                issues.append(f"Record {i}: invalid age")
+            if not record.email or '@' not in record.email:
+                issues.append(f"Record {i}: invalid email")
+        
+        return {
+            'total_records': len(self.records),
+            'issues_found': len(issues),
+            'issues': issues,
+            'quality_score': (len(self.records) - len(issues)) / len(self.records)
+        }
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="none">
+  The method signature takes no parameters, but typically the analyzer is initialized with the data it needs to process.
+</ParamField>
+
+<ParamField path="Output" type="any">
+  Can return any type - dict, string, number, object, or None. The return value is application-specific.
+</ParamField>
+
+## Key Considerations
+
+- The result cannot be processed further with Data methods - it's a terminal operation
+- Use `getraw()` to extract the result value
+- Ideal for generating reports, summaries, or performing side effects
+- The analyzer typically receives data via constructor parameters
+- No restrictions on return type - return what makes sense for your use case
+- Can perform I/O operations, API calls, or any other side effects
+
+## When to Use Process
+
+- **Use Process when:**
+  - You need to generate a final report or summary
+  - You're performing side effects (writing files, API calls)
+  - You need to return statistics or aggregate metrics
+  - The output doesn't need further Data processing
+  - You need maximum flexibility in what you return
+
+- **Use Transform when:**
+  - You need to return a list that will be further processed
+  - You want to maintain the Data workflow
+
+- **Use Reduce when:**
+  - You're aggregating to a single value using pair-wise combination
+  - You want a more structured aggregation pattern
+
+## Related
+
+- [Data.process()](/api/data#process) - The method that uses this analyzer
+- [Data.count()](/api/data#count) - Built-in method equivalent to a simple process operation
+- [Transform Analyzer](/api/analyzers/transform) - For transformations that return processable lists
+- [Reduce Analyzer](/api/analyzers/reduce) - For structured aggregation

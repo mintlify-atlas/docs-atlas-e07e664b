@@ -1,0 +1,193 @@
+---
+title: AnalyzerTransform
+description: Apply custom transformations to entire data lists
+---
+
+## Overview
+
+The `AnalyzerTransform` analyzer allows you to transform the entire list of data at once. Unlike `map()` which processes items individually, the `transform()` method receives the complete list and returns a new list.
+
+This is useful for operations that need context from other items, such as deduplication, reordering based on global criteria, or batch processing.
+
+## Class Signature
+
+```python
+class AnalyzerTransform(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"transform"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `transform()` method in your analyzer:
+
+```python
+def transform(self, l)
+```
+
+<ParamField path="l" type="list" required>
+  The entire list of data items from `Data.data`
+</ParamField>
+
+<ResponseField name="return" type="list" required>
+  A new list of data items after transformation
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerTransform
+
+class User:
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+class RemoveDuplicates(AnalyzerTransform):
+    def transform(self, user_list):
+        seen_ids = set()
+        unique_users = []
+        
+        for user in user_list:
+            if user.id not in seen_ids:
+                seen_ids.add(user.id)
+                unique_users.append(user)
+        
+        return unique_users
+
+users = [
+    User(1, "Alice"),
+    User(2, "Bob"),
+    User(1, "Alice"),  # duplicate
+    User(3, "Charlie")
+]
+
+data = Data(users)
+unique = data.transform(RemoveDuplicates())
+raw = unique.getraw()
+
+# Result: [User(1), User(2), User(3)]
+```
+
+## Batch Processing
+
+Process items in batches with access to neighboring items:
+
+```python
+class SmoothValues(AnalyzerTransform):
+    def transform(self, items):
+        if len(items) < 2:
+            return items
+        
+        smoothed = [items[0]]  # Keep first item as-is
+        
+        for i in range(1, len(items) - 1):
+            # Average with neighbors
+            avg = (items[i-1].value + items[i].value + items[i+1].value) / 3
+            items[i].value = avg
+            smoothed.append(items[i])
+        
+        smoothed.append(items[-1])  # Keep last item as-is
+        return smoothed
+```
+
+## Sampling and Slicing
+
+```python
+class TakeEveryNth(AnalyzerTransform):
+    def __init__(self, n):
+        self.n = n
+    
+    def transform(self, items):
+        return items[::self.n]
+
+class TakeFirst(AnalyzerTransform):
+    def __init__(self, count):
+        self.count = count
+    
+    def transform(self, items):
+        return items[:self.count]
+
+data = Data(large_list)
+sampled = data.transform(TakeEveryNth(10))  # Every 10th item
+top_items = data.transform(TakeFirst(100))   # First 100 items
+```
+
+## Reshaping Data
+
+```python
+class Flatten(AnalyzerTransform):
+    def transform(self, items):
+        flattened = []
+        for item in items:
+            if isinstance(item, list):
+                flattened.extend(item)
+            else:
+                flattened.append(item)
+        return flattened
+
+class Chunk(AnalyzerTransform):
+    def __init__(self, size):
+        self.size = size
+    
+    def transform(self, items):
+        return [items[i:i + self.size] 
+                for i in range(0, len(items), self.size)]
+```
+
+## Contextual Transformations
+
+```python
+class NormalizeScores(AnalyzerTransform):
+    def transform(self, students):
+        # Need all scores to calculate mean and std dev
+        scores = [s.score for s in students]
+        mean = sum(scores) / len(scores)
+        std_dev = (sum((x - mean) ** 2 for x in scores) / len(scores)) ** 0.5
+        
+        for student in students:
+            student.normalized_score = (student.score - mean) / std_dev
+        
+        return students
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="list">
+  The complete list of data items. You have access to all items and can examine relationships between them.
+</ParamField>
+
+<ParamField path="Output" type="list">
+  A new list of data items. Can be shorter, longer, or the same length as the input. Items can be modified, reordered, or replaced.
+</ParamField>
+
+## Key Considerations
+
+- The method receives the entire list at once, not individual items
+- You can change the number of items (add, remove, duplicate)
+- You can reorder items based on global context
+- You can modify items based on relationships with other items
+- The result is a new `Data` instance that can be processed further
+- More memory-intensive than item-by-item processing (map, filter)
+- Use when you need access to multiple items simultaneously
+
+## When to Use Transform vs Map
+
+- **Use Transform when:**
+  - You need to compare items with each other
+  - You need to calculate global statistics (mean, max, etc.)
+  - You're removing duplicates or sampling
+  - You're reordering or reshaping the entire dataset
+
+- **Use Map when:**
+  - Each item can be transformed independently
+  - You don't need context from other items
+  - You want better memory efficiency
+
+## Related
+
+- [Data.transform()](/api/data#transform) - The method that uses this analyzer
+- [Map Analyzer](/api/analyzers/map) - For item-by-item transformations
+- [Sort Analyzer](/api/analyzers/sort) - For ordering items

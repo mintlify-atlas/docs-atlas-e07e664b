@@ -1,0 +1,525 @@
+---
+title: Error Handling
+description: Learn how to handle exceptions, validate data, and debug issues in DataManipylator
+---
+
+## Overview
+
+DataManipylator includes built-in error handling mechanisms to help you write robust data processing pipelines. Understanding these exceptions and decorators will help you build more reliable applications.
+
+<Note>
+DataManipylator uses a combination of custom exceptions and decorators to validate operations and catch errors during data processing.
+</Note>
+
+## Exception Types
+
+DataManipylator defines several custom exceptions in `datamanipylator.exceptions`:
+
+### IncorrectInputDataType
+
+Raised when data of the wrong type is passed to a `Data` object.
+
+```python
+from datamanipylator import Data
+
+# Data expects a list
+try:
+    data = Data({"key": "value"})  # Wrong: passing a dict
+except IncorrectInputDataType as e:
+    print(e)  # "Type of input data is not <class 'list'>"
+
+# Correct usage
+data = Data([1, 2, 3])  # ✓
+```
+
+<Warning>
+The `Data` class only accepts lists. If you have a dictionary, wrap it in a list or use the appropriate data structure.
+</Warning>
+
+### IncorrectAnalyzer
+
+Raised when an analyzer is used with the wrong operation.
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import AnalyzerMap, AnalyzerFilter
+
+class MyMapper(AnalyzerMap):
+    def map(self, item):
+        return item * 2
+
+data = Data([1, 2, 3])
+
+try:
+    # Trying to use a Map analyzer with filter()
+    result = data.filter(MyMapper())
+except IncorrectAnalyzer as e:
+    print(e)
+    # "Analyzer object <MyMapper> is of type 'map' but used for 'filter()'"
+```
+
+**How to fix:**
+- Ensure your analyzer inherits from the correct base class
+- Use the analyzer with the matching operation method
+- Check that `analyzertype` matches the operation
+
+### NotAnAnalyzer
+
+Raised when an object without a valid `analyzertype` is passed to the `analyze()` method.
+
+```python
+from datamanipylator import Data
+
+class InvalidAnalyzer:
+    # Missing analyzertype attribute
+    pass
+
+data = Data([1, 2, 3])
+
+try:
+    result = data.analyze(InvalidAnalyzer())
+except NotAnAnalyzer as e:
+    print(e)  # "object does not have a valid analyzertype value"
+```
+
+### MissingKeyException
+
+Raised when accessing a non-existent key in indexed data.
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import AnalyzerIndexBy
+
+class GroupByType(AnalyzerIndexBy):
+    def indexby(self, item):
+        return item.type
+
+class Item:
+    def __init__(self, type, value):
+        self.type = type
+        self.value = value
+
+items = [Item("A", 1), Item("B", 2)]
+data = Data(items)
+grouped = data.indexby(GroupByType())
+
+try:
+    # Key "C" doesn't exist
+    result = grouped['C']
+except MissingKeyException as e:
+    print(e)  # "Key C is not in the data dictionary"
+
+# Safe access - check first
+if 'C' in grouped.getraw().keys():
+    result = grouped['C']
+else:
+    print("Key C not found")
+```
+
+### AnalyzerFailure
+
+Generic exception raised when an analyzer encounters an error during processing.
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import AnalyzerMap
+
+class DivideByValue(AnalyzerMap):
+    def map(self, item):
+        # This will fail if item.value is 0
+        return 100 / item.value
+
+class Item:
+    def __init__(self, value):
+        self.value = value
+
+items = [Item(10), Item(0), Item(5)]  # Second item will cause error
+data = Data(items)
+
+try:
+    result = data.map(DivideByValue())
+except AnalyzerFailure as e:
+    print(e)
+    # Shows the exception type, content, method, and analyzer
+```
+
+<Tip>
+`AnalyzerFailure` wraps the underlying exception and provides context about which analyzer and method caused the error.
+</Tip>
+
+## Built-in Decorators
+
+DataManipylator uses two decorators internally to validate operations and catch exceptions:
+
+### @validate_call
+
+The `@validate_call` decorator validates that:
+1. The correct type of analyzer is used with each operation
+2. The analyzer's `analyzertype` matches the method name
+
+```python
+# This is used internally in the Data class
+from datamanipylator.decorators import validate_call
+from datamanipylator.exceptions import IncorrectAnalyzer
+
+@validate_call
+def map(self, analyzer):
+    # validate_call checks that analyzer.analyzertype == 'map'
+    # If not, raises IncorrectAnalyzer
+    ...
+```
+
+**You don't need to use this decorator in your code** - it's already applied to all Data class methods.
+
+### @catch_exception
+
+The `@catch_exception` decorator catches any exception during data processing and wraps it in an `AnalyzerFailure` exception with additional context.
+
+```python
+# This is used internally in the Data class
+from datamanipylator.decorators import catch_exception
+from datamanipylator.exceptions import AnalyzerFailure
+
+@catch_exception
+def __map(self, analyzer):
+    # If any exception occurs here, it's caught and wrapped
+    # in an AnalyzerFailure with details
+    ...
+```
+
+## Error Handling Patterns
+
+### Defensive Analyzer Design
+
+Write analyzers that handle edge cases gracefully:
+
+```python
+from datamanipylator.analyzers import AnalyzerMap
+
+class SafeCalculation(AnalyzerMap):
+    def map(self, item):
+        # Check for None
+        if item.value is None:
+            item.result = None
+            return item
+        
+        # Check for division by zero
+        if item.divisor == 0:
+            item.result = float('inf')
+            return item
+        
+        # Safe calculation
+        item.result = item.value / item.divisor
+        return item
+```
+
+### Validation in Filters
+
+```python
+from datamanipylator.analyzers import AnalyzerFilter
+
+class ValidRecordsOnly(AnalyzerFilter):
+    def filter(self, item):
+        # Validate required fields exist
+        if not hasattr(item, 'id'):
+            return False
+        
+        if not hasattr(item, 'timestamp'):
+            return False
+        
+        # Validate data types
+        if not isinstance(item.id, (int, str)):
+            return False
+        
+        # Validate values
+        if item.timestamp < 0:
+            return False
+        
+        return True
+```
+
+### Try-Except in Custom Analyzers
+
+Handle specific errors within your analyzer:
+
+```python
+from datamanipylator.analyzers import AnalyzerMap
+import logging
+
+logger = logging.getLogger(__name__)
+
+class RobustTransform(AnalyzerMap):
+    def map(self, item):
+        try:
+            # Attempt transformation
+            result = complex_transformation(item)
+            return result
+        except ValueError as e:
+            logger.warning(f"ValueError processing item {item.id}: {e}")
+            # Return original item or default
+            return item
+        except Exception as e:
+            logger.error(f"Unexpected error processing item {item.id}: {e}")
+            # Re-raise to let AnalyzerFailure catch it
+            raise
+```
+
+### Pre-Processing Validation
+
+Validate data before processing:
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import AnalyzerFilter
+
+class ValidateSchema(AnalyzerFilter):
+    """Ensures all items have required fields"""
+    def __init__(self, required_fields):
+        self.required_fields = required_fields
+    
+    def filter(self, item):
+        return all(hasattr(item, field) for field in self.required_fields)
+
+# Use at the start of your pipeline
+data = Data(raw_records)
+validated = data.filter(ValidateSchema(['id', 'name', 'value']))
+
+# Now safely process knowing all items have required fields
+processed = validated.map(MyTransform())
+```
+
+## Debugging Tips
+
+### 1. Check Data Types
+
+Verify you're passing lists to `Data()`:
+
+```python
+from datamanipylator import Data
+
+# Inspect your data first
+my_data = get_data_from_somewhere()
+print(f"Type: {type(my_data)}")
+print(f"Length: {len(my_data) if hasattr(my_data, '__len__') else 'N/A'}")
+
+# Convert if necessary
+if isinstance(my_data, dict):
+    my_data = list(my_data.values())
+
+data = Data(my_data)
+```
+
+### 2. Inspect Intermediate Results
+
+Break chains to examine intermediate states:
+
+```python
+# Instead of:
+result = data.filter(F1()).map(M1()).reduce(R1())
+
+# Do:
+step1 = data.filter(F1())
+print(f"After filter: {len(step1.getraw())} items")
+
+step2 = step1.map(M1())
+print(f"After map: {step2.getraw()[0]}")  # Inspect first item
+
+result = step2.reduce(R1())
+```
+
+### 3. Add Logging to Analyzers
+
+```python
+from datamanipylator.analyzers import AnalyzerMap
+import logging
+
+logger = logging.getLogger(__name__)
+
+class DebugMap(AnalyzerMap):
+    def map(self, item):
+        logger.debug(f"Processing item: {item}")
+        result = item.value * 2
+        logger.debug(f"Result: {result}")
+        return result
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+### 4. Use count() to Track Size
+
+```python
+from datamanipylator import Data
+
+data = Data(items)
+print(f"Initial count: {data.count().getraw()}")
+
+filtered = data.filter(MyFilter())
+print(f"After filter: {filtered.count().getraw()}")
+
+mapped = filtered.map(MyMap())
+print(f"After map: {mapped.count().getraw()}")
+```
+
+## Common Errors and Solutions
+
+<AccordionGroup>
+  <Accordion title="TypeError: 'Data' object is not callable">
+    **Problem:** Trying to call a Data object like a function.
+    
+    ```python
+    # Wrong
+    result = data(analyzer)
+    
+    # Right
+    result = data.map(analyzer)  # or .filter(), .reduce(), etc.
+    ```
+  </Accordion>
+
+  <Accordion title="AttributeError: '_NonMutableData' object has no attribute 'map'">
+    **Problem:** Trying to chain operations after a terminal operation.
+    
+    ```python
+    # Wrong - reduce returns _NonMutableData
+    result = data.reduce(Sum()).map(Double())
+    
+    # Right - rearrange operations
+    result = data.map(Double()).reduce(Sum())
+    ```
+  </Accordion>
+
+  <Accordion title="IncorrectAnalyzer: Analyzer is type 'X' but used for 'Y()'">
+    **Problem:** Using an analyzer with the wrong operation.
+    
+    ```python
+    # Wrong
+    class MyAnalyzer(AnalyzerMap):
+        def map(self, item):
+            return item
+    
+    data.filter(MyAnalyzer())  # IncorrectAnalyzer!
+    
+    # Right
+    data.map(MyAnalyzer())
+    ```
+  </Accordion>
+
+  <Accordion title="NotImplementedError in analyzer">
+    **Problem:** Forgot to implement the required method.
+    
+    ```python
+    # Wrong - method not implemented
+    class MyFilter(AnalyzerFilter):
+        pass  # Missing filter() method!
+    
+    # Right
+    class MyFilter(AnalyzerFilter):
+        def filter(self, item):
+            return item.value > 0
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Validate early">
+    Use filters at the start of your pipeline to remove invalid data:
+    
+    ```python
+    result = (
+        data
+        .filter(ValidateSchema(['id', 'value']))
+        .filter(PositiveValuesOnly())
+        .map(Transform())
+        .reduce(Aggregate())
+    )
+    ```
+  </Step>
+
+  <Step title="Handle None values">
+    Check for None in your analyzers:
+    
+    ```python
+    def map(self, item):
+        if item.value is None:
+            return item  # or set a default
+        return transform(item.value)
+    ```
+  </Step>
+
+  <Step title="Use type hints">
+    Add type hints for better IDE support and error detection:
+    
+    ```python
+    from typing import Any
+    from datamanipylator.analyzers import AnalyzerMap
+    
+    class MyMapper(AnalyzerMap):
+        def map(self, item: MyDataClass) -> MyDataClass:
+            ...
+    ```
+  </Step>
+
+  <Step title="Write tests">
+    Test your analyzers with edge cases:
+    
+    ```python
+    import unittest
+    
+    class TestMyAnalyzer(unittest.TestCase):
+        def test_empty_list(self):
+            data = Data([])
+            result = data.filter(MyFilter())
+            self.assertEqual(len(result.getraw()), 0)
+        
+        def test_none_values(self):
+            # Test with None
+            ...
+    ```
+  </Step>
+</Steps>
+
+## Exception Hierarchy
+
+All DataManipylator exceptions inherit from Python's base `Exception` class:
+
+```
+Exception
+├── IncorrectInputDataType
+├── NotAnAnalyzer
+├── IncorrectAnalyzer
+├── MissingKeyException
+└── AnalyzerFailure
+```
+
+You can catch specific exceptions or catch all DataManipylator exceptions:
+
+```python
+from datamanipylator import Data
+from datamanipylator.exceptions import (
+    IncorrectInputDataType,
+    AnalyzerFailure
+)
+
+try:
+    data = Data(my_data)
+    result = data.filter(MyFilter()).map(MyMap()).reduce(MyReduce())
+except IncorrectInputDataType:
+    print("Wrong data type provided")
+except AnalyzerFailure as e:
+    print(f"Processing failed: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Operations" icon="book-open" href="/guides/basic-operations">
+    Review the core operations and their usage
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/data">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

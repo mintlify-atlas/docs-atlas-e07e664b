@@ -1,0 +1,459 @@
+---
+title: Chaining Operations
+description: Build powerful data processing pipelines by chaining multiple operations together
+---
+
+## Overview
+
+One of DataManipylator's most powerful features is the ability to chain operations together. Since each operation returns a new `Data` object (or `_DictData` for indexed data), you can create sophisticated data processing pipelines.
+
+<Note>
+Method chaining works because DataManipylator operations are **immutable** - each operation returns a new object rather than modifying the original.
+</Note>
+
+## Basic Chaining
+
+### Sequential Operations
+
+The simplest form of chaining applies operations one after another:
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap
+
+class KeepPositive(AnalyzerFilter):
+    def filter(self, item):
+        return item > 0
+
+class Square(AnalyzerMap):
+    def map(self, item):
+        return item ** 2
+
+data = Data([-2, -1, 0, 1, 2, 3])
+result = data.filter(KeepPositive()).map(Square())
+print(result.getraw())
+# [1, 4, 9]
+```
+
+This chain:
+1. Filters out non-positive numbers: `[1, 2, 3]`
+2. Squares each remaining number: `[1, 4, 9]`
+
+### Filter, Map, Reduce Pattern
+
+A common pattern in functional programming:
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerMap,
+    AnalyzerReduce
+)
+
+class Product:
+    def __init__(self, name, category, price, quantity):
+        self.name = name
+        self.category = category
+        self.price = price
+        self.quantity = quantity
+
+class InStockFilter(AnalyzerFilter):
+    def filter(self, product):
+        return product.quantity > 0
+
+class GetTotalValue(AnalyzerMap):
+    def map(self, product):
+        return product.price * product.quantity
+
+class SumValues(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        return v1 + v2
+
+products = [
+    Product("Widget", "hardware", 10.00, 5),
+    Product("Gadget", "hardware", 15.00, 0),
+    Product("Doohickey", "tools", 8.00, 3),
+    Product("Thingamajig", "tools", 12.00, 2)
+]
+
+data = Data(products)
+total_inventory_value = (
+    data
+    .filter(InStockFilter())
+    .map(GetTotalValue())
+    .reduce(SumValues(0))
+)
+
+print(total_inventory_value.getraw())
+# 98.0  (10*5 + 8*3 + 12*2)
+```
+
+## Chaining with IndexBy
+
+### Group Then Process
+
+Use `indexby()` to split data into groups, then apply operations to each group:
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import (
+    AnalyzerIndexBy,
+    AnalyzerReduce
+)
+
+class GroupByCategory(AnalyzerIndexBy):
+    def indexby(self, product):
+        return product.category
+
+class SumQuantities(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        if isinstance(v1, int):
+            return v1 + v2.quantity
+        else:
+            return v1.quantity + v2.quantity
+
+data = Data(products)
+category_totals = (
+    data
+    .indexby(GroupByCategory())
+    .reduce(SumQuantities(0))
+)
+
+print(category_totals.getraw())
+# {'hardware': 5, 'tools': 5}
+```
+
+### Multiple Levels of Grouping
+
+You can chain multiple `indexby()` operations to create nested groupings:
+
+```python
+class SalesRecord:
+    def __init__(self, region, quarter, product, amount):
+        self.region = region
+        self.quarter = quarter
+        self.product = product
+        self.amount = amount
+
+class GroupByRegion(AnalyzerIndexBy):
+    def indexby(self, record):
+        return record.region
+
+class GroupByQuarter(AnalyzerIndexBy):
+    def indexby(self, record):
+        return record.quarter
+
+class SumAmounts(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        if isinstance(v1, int):
+            return v1 + v2.amount
+        else:
+            return v1.amount + v2.amount
+
+sales = [
+    SalesRecord("North", "Q1", "Widget", 1000),
+    SalesRecord("North", "Q1", "Gadget", 1500),
+    SalesRecord("North", "Q2", "Widget", 1200),
+    SalesRecord("South", "Q1", "Widget", 800),
+    SalesRecord("South", "Q2", "Gadget", 900)
+]
+
+data = Data(sales)
+regional_quarterly_totals = (
+    data
+    .indexby(GroupByRegion())
+    .indexby(GroupByQuarter())
+    .reduce(SumAmounts(0))
+)
+
+print(regional_quarterly_totals.getraw())
+# {
+#   'North': {'Q1': 2500, 'Q2': 1200},
+#   'South': {'Q1': 800, 'Q2': 900}
+# }
+```
+
+## Complex Pipeline Examples
+
+### Data Cleaning and Analysis Pipeline
+
+```python
+from datamanipylator import Data
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerMap,
+    AnalyzerIndexBy,
+    AnalyzerReduce,
+    AnalyzerSort
+)
+
+class Transaction:
+    def __init__(self, user_id, amount, status, timestamp):
+        self.user_id = user_id
+        self.amount = amount
+        self.status = status
+        self.timestamp = timestamp
+
+# Step 1: Filter valid transactions
+class ValidTransactions(AnalyzerFilter):
+    def filter(self, txn):
+        return txn.status == "completed" and txn.amount > 0
+
+# Step 2: Normalize amounts to cents
+class ToCents(AnalyzerMap):
+    def map(self, txn):
+        txn.amount = int(txn.amount * 100)
+        return txn
+
+# Step 3: Group by user
+class GroupByUser(AnalyzerIndexBy):
+    def indexby(self, txn):
+        return txn.user_id
+
+# Step 4: Calculate total per user
+class TotalAmount(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        if isinstance(v1, int):
+            return v1 + v2.amount
+        else:
+            return v1.amount + v2.amount
+
+transactions = [
+    Transaction("user1", 25.50, "completed", 1234567890),
+    Transaction("user1", 10.00, "completed", 1234567900),
+    Transaction("user2", 50.75, "completed", 1234567910),
+    Transaction("user1", 15.00, "failed", 1234567920),
+    Transaction("user2", -5.00, "completed", 1234567930),
+    Transaction("user3", 100.00, "completed", 1234567940)
+]
+
+data = Data(transactions)
+user_totals = (
+    data
+    .filter(ValidTransactions())
+    .map(ToCents())
+    .indexby(GroupByUser())
+    .reduce(TotalAmount(0))
+)
+
+print(user_totals.getraw())
+# {'user1': 3550, 'user2': 5075, 'user3': 10000}
+```
+
+### Multi-Stage Filtering and Transformation
+
+```python
+class Employee:
+    def __init__(self, name, department, salary, years_service):
+        self.name = name
+        self.department = department
+        self.salary = salary
+        self.years_service = years_service
+
+class FullTimeFilter(AnalyzerFilter):
+    def filter(self, emp):
+        return emp.years_service >= 1
+
+class HighPerformerFilter(AnalyzerFilter):
+    def filter(self, emp):
+        return emp.salary > 50000
+
+class CalculateBonus(AnalyzerMap):
+    def map(self, emp):
+        bonus_rate = 0.1 if emp.years_service > 5 else 0.05
+        emp.bonus = emp.salary * bonus_rate
+        return emp
+
+class GroupByDepartment(AnalyzerIndexBy):
+    def indexby(self, emp):
+        return emp.department
+
+class TotalBonuses(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        if isinstance(v1, (int, float)):
+            return v1 + v2.bonus
+        else:
+            return v1.bonus + v2.bonus
+
+employees = [
+    Employee("Alice", "Engineering", 75000, 6),
+    Employee("Bob", "Engineering", 45000, 2),
+    Employee("Charlie", "Sales", 60000, 4),
+    Employee("Diana", "Sales", 80000, 7),
+    Employee("Eve", "HR", 55000, 3)
+]
+
+data = Data(employees)
+department_bonus_budget = (
+    data
+    .filter(FullTimeFilter())
+    .filter(HighPerformerFilter())
+    .map(CalculateBonus())
+    .indexby(GroupByDepartment())
+    .reduce(TotalBonuses(0.0))
+)
+
+print(department_bonus_budget.getraw())
+# {'Engineering': 7500.0, 'Sales': 11000.0, 'HR': 2750.0}
+```
+
+## Using the Algorithm Class
+
+For reusable pipelines, use the `Algorithm` class to encapsulate a sequence of operations:
+
+```python
+from datamanipylator import Data
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import (
+    AnalyzerFilter,
+    AnalyzerMap,
+    AnalyzerReduce
+)
+
+# Define analyzers
+class PositiveOnly(AnalyzerFilter):
+    def filter(self, item):
+        return item > 0
+
+class Square(AnalyzerMap):
+    def map(self, item):
+        return item ** 2
+
+class Sum(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        return v1 + v2
+
+# Create reusable algorithm
+algorithm = Algorithm()
+algorithm.add(PositiveOnly())
+algorithm.add(Square())
+algorithm.add(Sum(0))
+
+# Apply to different datasets
+data1 = Data([-2, -1, 0, 1, 2, 3])
+result1 = data1.apply_algorithm(algorithm)
+print(result1.getraw())  # 14 (1² + 2² + 3²)
+
+data2 = Data([5, -3, 2, -1, 4])
+result2 = data2.apply_algorithm(algorithm)
+print(result2.getraw())  # 45 (5² + 2² + 4²)
+```
+
+<Tip>
+The `Algorithm` class is perfect for:
+- Creating reusable data processing templates
+- Standardizing analysis across multiple datasets
+- Building configurable ETL pipelines
+</Tip>
+
+## Best Practices
+
+### 1. Order Matters
+
+Place filtering operations early to reduce the amount of data processed:
+
+<CodeGroup>
+```python Efficient
+# Filter first, then transform
+result = data.filter(validator).map(transformer).reduce(aggregator)
+```
+
+```python Inefficient
+# Transform everything, then filter
+result = data.map(transformer).filter(validator).reduce(aggregator)
+```
+</CodeGroup>
+
+### 2. Reuse Analyzer Instances
+
+Create analyzer instances once if they don't need unique state:
+
+```python
+# Good: reuse instances
+positive_filter = PositiveOnly()
+square_map = Square()
+
+result1 = data1.filter(positive_filter).map(square_map)
+result2 = data2.filter(positive_filter).map(square_map)
+
+# Also fine: create new instances if needed
+result3 = data3.filter(PositiveOnly()).map(Square())
+```
+
+### 3. Break Complex Chains
+
+For readability, break very long chains into intermediate steps:
+
+```python
+# Complex chain
+data = Data(records)
+cleaned = data.filter(ValidRecords()).map(Normalize())
+grouped = cleaned.indexby(GroupByCategory())
+analyzed = grouped.filter(NonEmpty()).reduce(Aggregate())
+final = analyzed.getraw()
+```
+
+### 4. Terminal Operations
+
+Remember that `reduce()`, `process()`, and `count()` return non-mutable objects:
+
+```python
+data = Data([1, 2, 3, 4])
+
+# This works - reduce is last
+total = data.filter(lambda x: x > 2).reduce(Sum(0))
+
+# This fails - can't chain after reduce
+# result = data.reduce(Sum(0)).map(Square())  # Error!
+```
+
+<Warning>
+Once you call a terminal operation like `reduce()` or `process()`, you cannot chain additional operations.
+</Warning>
+
+## Common Patterns
+
+### Group-Filter-Aggregate
+
+```python
+result = (
+    data
+    .indexby(GroupByCategory())
+    .filter(MeetsThreshold())
+    .reduce(CalculateTotal())
+)
+```
+
+### Filter-Transform-Sort
+
+```python
+result = (
+    data
+    .filter(IsValid())
+    .map(EnrichWithMetadata())
+    .sort(ByTimestamp())
+)
+```
+
+### Multi-Level Group and Reduce
+
+```python
+result = (
+    data
+    .indexby(GroupByLevel1())
+    .indexby(GroupByLevel2())
+    .reduce(Aggregate())
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Analyzers" icon="code" href="/guides/custom-analyzers">
+    Learn how to create your own analyzer classes
+  </Card>
+  <Card title="Error Handling" icon="shield" href="/guides/error-handling">
+    Handle errors and validate data in your pipelines
+  </Card>
+</CardGroup>

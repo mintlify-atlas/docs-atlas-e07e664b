@@ -1,0 +1,106 @@
+---
+title: Installation
+description: Get started with DataManipylator by installing it in your Python environment
+---
+
+## Prerequisites
+
+Before installing DataManipylator, ensure you have:
+
+- Python 3.6 or higher
+- pip (Python package installer)
+
+<Note>
+  DataManipylator is designed for functional data manipulation and works with any list-based data structures, including complex objects like HTCondor ClassAds.
+</Note>
+
+## Install via pip
+
+Install DataManipylator using pip:
+
+```bash
+pip install datamanipylator
+```
+
+This will install the latest stable version of DataManipylator and its dependencies.
+
+## Verify Installation
+
+After installation, verify that DataManipylator is correctly installed by running:
+
+<Steps>
+  <Step title="Open Python interpreter">
+    Open your terminal and start a Python session:
+    ```bash
+    python
+    ```
+  </Step>
+
+  <Step title="Import the library">
+    Try importing the main components:
+    ```python
+    from datamanipylator.data import Data
+    from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap, AnalyzerIndexBy
+    ```
+  </Step>
+
+  <Step title="Create a simple Data object">
+    Test basic functionality:
+    ```python
+    data = Data([1, 2, 3, 4, 5])
+    result = data.count()
+    print(result.getraw())  # Should output: 5
+    ```
+  </Step>
+</Steps>
+
+If no errors occur, DataManipylator is successfully installed!
+
+## Development Installation
+
+For development purposes or to get the latest unreleased features, you can install from source:
+
+```bash
+git clone https://github.com/your-repo/datamanipylator.git
+cd datamanipylator
+pip install -e .
+```
+
+<Tip>
+  Use a virtual environment to keep your DataManipylator installation isolated from other Python projects:
+  ```bash
+  python -m venv myenv
+  source myenv/bin/activate  # On Windows: myenv\Scripts\activate
+  pip install datamanipylator
+  ```
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'datamanipylator'">
+    This usually means the package isn't installed in your current Python environment. Make sure you:
+    - Activated the correct virtual environment (if using one)
+    - Installed the package with pip in that environment
+    - Are using the correct Python interpreter
+  </Accordion>
+
+  <Accordion title="Permission denied errors">
+    If you encounter permission errors during installation, try:
+    ```bash
+    pip install --user datamanipylator
+    ```
+    This installs the package in your user directory instead of system-wide.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn the basics with a hands-on tutorial
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/data-class">
+    Understand Data objects and Analyzers
+  </Card>
+</CardGroup>

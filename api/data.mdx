@@ -1,0 +1,406 @@
+---
+title: "Data"
+description: "Core class for data manipulation and analysis"
+---
+
+## Overview
+
+The `Data` class is the primary container for working with list-based data in DataManipylator. It provides a comprehensive set of methods for transforming, filtering, analyzing, and manipulating data through functional programming patterns.
+
+## Constructor
+
+```python
+Data(data, timestamp=None)
+```
+
+Creates a new Data object to store and manipulate list data.
+
+<ParamField path="data" type="list" required>
+  The data to be stored. Must be a list type.
+</ParamField>
+
+<ParamField path="timestamp" type="int">
+  The timestamp when this object was created. If not provided, defaults to the current Unix timestamp.
+</ParamField>
+
+<ResponseField name="Data" type="object">
+  A new Data instance containing the provided list data.
+</ResponseField>
+
+### Example
+
+```python
+from datamanipylator.data import Data
+
+# Create a Data object with a list of dictionaries
+data = Data([{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}])
+```
+
+## Methods
+
+### indexby
+
+```python
+indexby(analyzer)
+```
+
+Groups items in the data into a dictionary based on the rules defined in the analyzer.
+
+<ParamField path="analyzer" type="AnalyzerIndexBy" required>
+  An instance of an AnalyzerIndexBy-type class implementing the `indexby()` method.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object containing a dictionary structure with grouped items.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.analyzers import AnalyzerIndexBy
+
+class GroupByAge(AnalyzerIndexBy):
+    def indexby(self, item):
+        return item["age"]
+
+data = Data([{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}])
+grouped = data.indexby(GroupByAge())
+```
+
+### map
+
+```python
+map(lambdamap)
+```
+
+Applies a transformation function to each item in the data.
+
+<ParamField path="lambdamap" type="AnalyzerMap | function" required>
+  An instance of an AnalyzerMap-type class implementing the `map()` method, or a plain Python function.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object with transformed items.
+</ResponseField>
+
+#### Example
+
+```python
+# Using a lambda function
+data = Data([1, 2, 3, 4])
+doubled = data.map(lambda x: x * 2)
+# Result: Data([2, 4, 6, 8])
+
+# Using an AnalyzerMap
+from datamanipylator.analyzers import AnalyzerMap
+
+class DoubleValue(AnalyzerMap):
+    def map(self, item):
+        return item * 2
+
+doubled = data.map(DoubleValue())
+```
+
+### filter
+
+```python
+filter(lambdafilter)
+```
+
+Removes items from the data that do not pass the filter condition.
+
+<ParamField path="lambdafilter" type="AnalyzerFilter | function" required>
+  An instance of an AnalyzerFilter-type class implementing the `filter()` method, or a plain Python function that returns a boolean.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object containing only the items that passed the filter.
+</ResponseField>
+
+#### Example
+
+```python
+# Using a lambda function
+data = Data([1, 2, 3, 4, 5])
+even_numbers = data.filter(lambda x: x % 2 == 0)
+# Result: Data([2, 4])
+
+# Using an AnalyzerFilter
+from datamanipylator.analyzers import AnalyzerFilter
+
+class FilterEven(AnalyzerFilter):
+    def filter(self, item):
+        return item % 2 == 0
+
+even_numbers = data.filter(FilterEven())
+```
+
+### reduce
+
+```python
+reduce(lambdareduce)
+```
+
+Accumulates values by processing the entire data list sequentially.
+
+<ParamField path="lambdareduce" type="AnalyzerReduce | function" required>
+  An instance of an AnalyzerReduce-type class implementing the `reduce()` method and optionally `initialvalue()`, or a plain Python function.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new non-mutable Data object containing the accumulated result.
+</ResponseField>
+
+#### Example
+
+```python
+# Using a lambda function
+data = Data([1, 2, 3, 4])
+total = data.reduce(lambda acc, x: acc + x)
+# Result: 10
+
+# Using an AnalyzerReduce
+from datamanipylator.analyzers import AnalyzerReduce
+
+class SumValues(AnalyzerReduce):
+    def initialvalue(self):
+        return 0
+    
+    def reduce(self, acc, item):
+        return acc + item
+
+total = data.reduce(SumValues())
+```
+
+### transform
+
+```python
+transform(analyzer)
+```
+
+Processes the entire data list and transforms it into a new structure.
+
+<ParamField path="analyzer" type="AnalyzerTransform" required>
+  An instance of an AnalyzerTransform-type class implementing the `transform()` method.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object with the transformed data.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.analyzers import AnalyzerTransform
+
+class ReverseList(AnalyzerTransform):
+    def transform(self, data):
+        return list(reversed(data))
+
+data = Data([1, 2, 3, 4])
+reversed_data = data.transform(ReverseList())
+# Result: Data([4, 3, 2, 1])
+```
+
+### sort
+
+```python
+sort(lambdasort)
+```
+
+Sorts the data based on a comparison function.
+
+<ParamField path="lambdasort" type="AnalyzerSort" required>
+  An instance of an AnalyzerSort-type class implementing the `sort()` method.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object with sorted items.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.analyzers import AnalyzerSort
+
+class SortByAge(AnalyzerSort):
+    def sort(self, item1, item2):
+        if item1["age"] < item2["age"]:
+            return -1
+        elif item1["age"] > item2["age"]:
+            return 1
+        return 0
+
+data = Data([{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}])
+sorted_data = data.sort(SortByAge())
+```
+
+### process
+
+```python
+process(analyzer)
+```
+
+Processes the entire data list using custom logic defined in the analyzer.
+
+<ParamField path="analyzer" type="AnalyzerProcess" required>
+  An instance of an AnalyzerProcess-type class implementing the `process()` method.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new non-mutable Data object with the processed result.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.analyzers import AnalyzerProcess
+
+class CalculateStats(AnalyzerProcess):
+    def process(self, data):
+        return {
+            "count": len(data),
+            "sum": sum(data),
+            "average": sum(data) / len(data)
+        }
+
+data = Data([1, 2, 3, 4, 5])
+stats = data.process(CalculateStats())
+# Result: {"count": 5, "sum": 15, "average": 3.0}
+```
+
+### count
+
+```python
+count()
+```
+
+Returns the number of items in the data list.
+
+<ResponseField name="return" type="Data">
+  A new non-mutable Data object containing the count as an integer.
+</ResponseField>
+
+#### Example
+
+```python
+data = Data([1, 2, 3, 4, 5])
+count = data.count()
+# Result: 5
+```
+
+### getraw
+
+```python
+getraw()
+```
+
+Returns the raw underlying data without the Data wrapper.
+
+<ResponseField name="return" type="list">
+  The raw list data stored in the Data object.
+</ResponseField>
+
+#### Example
+
+```python
+data = Data([1, 2, 3, 4])
+raw_list = data.getraw()
+# Result: [1, 2, 3, 4]
+```
+
+### get
+
+```python
+get(*key_l)
+```
+
+Returns data from a nested dictionary structure by following the provided keys.
+
+<ParamField path="*key_l" type="str">
+  Variable number of keys to traverse nested dictionaries. If no keys are provided, returns the entire data.
+</ParamField>
+
+<ResponseField name="return" type="any">
+  The data at the specified location in the nested structure, or the entire data if no keys provided.
+</ResponseField>
+
+#### Example
+
+```python
+# After using indexby to create nested structure
+data = Data([{"status": "active", "name": "Alice"}])
+grouped = data.indexby(GroupByStatus())
+
+# Get nested data
+active_users = grouped.get("active")
+```
+
+### analyze
+
+```python
+analyze(analyzer)
+```
+
+Generic method that automatically selects the appropriate analysis method based on the analyzer type.
+
+<ParamField path="analyzer" type="Analyzer" required>
+  An Analyzer object. The method automatically detects the analyzer type and calls the corresponding method (indexby, map, filter, reduce, transform, or process).
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object with the results of the analysis.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.analyzers import AnalyzerFilter
+
+class FilterPositive(AnalyzerFilter):
+    def filter(self, item):
+        return item > 0
+
+data = Data([-2, -1, 0, 1, 2])
+positive = data.analyze(FilterPositive())
+# Result: Data([1, 2])
+```
+
+### apply_algorithm
+
+```python
+apply_algorithm(algorithm)
+```
+
+Applies a multi-step Algorithm to the data, executing all analyzers in sequence.
+
+<ParamField path="algorithm" type="Algorithm" required>
+  An Algorithm object containing multiple analyzer steps.
+</ParamField>
+
+<ResponseField name="return" type="Data">
+  A new Data object with the final result after all algorithm steps are applied.
+</ResponseField>
+
+#### Example
+
+```python
+from datamanipylator.algorithm import Algorithm
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerMap
+
+class FilterEven(AnalyzerFilter):
+    def filter(self, item):
+        return item % 2 == 0
+
+class Double(AnalyzerMap):
+    def map(self, item):
+        return item * 2
+
+algo = Algorithm()
+algo.add(FilterEven())
+algo.add(Double())
+
+data = Data([1, 2, 3, 4, 5])
+result = data.apply_algorithm(algo)
+# Result: Data([4, 8])
+```

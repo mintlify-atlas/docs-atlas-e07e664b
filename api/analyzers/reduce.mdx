@@ -1,0 +1,175 @@
+---
+title: AnalyzerReduce
+description: Aggregate data items into a single value
+---
+
+## Overview
+
+The `AnalyzerReduce` analyzer aggregates all items in your data into a single value. The `reduce()` method is called repeatedly with pairs of items, combining them until only one value remains.
+
+This is useful for operations like summing values, finding maximums, concatenating strings, or any other aggregation logic.
+
+## Class Signature
+
+```python
+class AnalyzerReduce(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"reduce"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Constructor
+
+```python
+def __init__(self, init_value=None)
+```
+
+<ParamField path="init_value" type="any" default="None">
+  The initial value to start the reduction. This value will be used as the first argument in the first call to `reduce()`.
+</ParamField>
+
+## Required Methods
+
+### initialvalue()
+
+```python
+def initialvalue(self)
+```
+
+<ResponseField name="return" type="any">
+  Returns the initial value set in the constructor
+</ResponseField>
+
+### reduce()
+
+You must implement the `reduce()` method in your analyzer:
+
+```python
+def reduce(self, item1, item2)
+```
+
+<ParamField path="item1" type="any" required>
+  The first data object or the accumulated value from previous reductions
+</ParamField>
+
+<ParamField path="item2" type="any" required>
+  The second data object to combine with item1
+</ParamField>
+
+<ResponseField name="return" type="any" required>
+  The aggregated value after combining item1 and item2
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerReduce
+
+class Sale:
+    def __init__(self, amount):
+        self.amount = amount
+
+class TotalSales(AnalyzerReduce):
+    def reduce(self, item1, item2):
+        # Handle case where item1 is already a number (from previous reduction)
+        if isinstance(item1, (int, float)):
+            return item1 + item2.amount
+        else:
+            return item1.amount + item2.amount
+
+sales = [
+    Sale(100),
+    Sale(250),
+    Sale(175),
+    Sale(300)
+]
+
+data = Data(sales)
+total = data.reduce(TotalSales(0))
+raw = total.getraw()
+
+# Result: 825
+```
+
+## Using Initial Values
+
+The initial value is crucial for type handling:
+
+```python
+class Sum(AnalyzerReduce):
+    def reduce(self, v1, v2):
+        # v1 starts as init_value (0), so it's already a number
+        return v1 + v2.value
+
+# Start with 0 as the initial value
+data = Data(items)
+total = data.reduce(Sum(init_value=0))
+```
+
+## Finding Maximum Values
+
+```python
+class MaxValue(AnalyzerReduce):
+    def reduce(self, item1, item2):
+        if isinstance(item1, (int, float)):
+            val1 = item1
+        else:
+            val1 = item1.value
+        
+        return max(val1, item2.value)
+
+data = Data(items)
+maximum = data.reduce(MaxValue(float('-inf')))
+```
+
+## Combining Objects
+
+```python
+class MergeStats(AnalyzerReduce):
+    def reduce(self, stats1, stats2):
+        if isinstance(stats1, dict):
+            combined = stats1
+        else:
+            combined = stats1.to_dict()
+        
+        stats2_dict = stats2.to_dict()
+        for key, value in stats2_dict.items():
+            combined[key] = combined.get(key, 0) + value
+        
+        return combined
+
+data = Data(stat_objects)
+combined = data.reduce(MergeStats(init_value={}))
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="object">
+  Two data objects to combine. The first may be the accumulated result from previous reductions or the initial value.
+</ParamField>
+
+<ParamField path="Output" type="any">
+  The aggregated value after combining the two inputs. This becomes item1 in the next call.
+</ParamField>
+
+## Key Considerations
+
+- Set an appropriate `init_value` in the constructor to handle the first reduction
+- Handle both cases: when `item1` is an object from your data and when it's an accumulated value
+- The result is not further processable - calling methods on it will raise an Exception
+- Use `getraw()` to extract the final value
+- Type checking with `isinstance()` is often necessary to handle accumulated vs. object values
+
+## Reduction Flow
+
+1. First call: `reduce(init_value, first_item)`
+2. Second call: `reduce(result_from_step1, second_item)`
+3. Third call: `reduce(result_from_step2, third_item)`
+4. Continue until all items are processed
+5. Final result is returned
+
+## Related
+
+- [Data.reduce()](/api/data#reduce) - The method that uses this analyzer
+- [Process Analyzer](/api/analyzers/process) - For operations that need the full list at once

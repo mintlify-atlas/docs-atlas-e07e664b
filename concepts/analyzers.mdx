@@ -1,0 +1,410 @@
+---
+title: "Analyzers"
+description: "Understanding the Analyzer pattern for data manipulation logic"
+---
+
+## Overview
+
+Analyzers are classes that encapsulate the business logic for data manipulation operations. Instead of passing raw functions, DataManipylator uses Analyzer objects that implement specific methods corresponding to Data class operations.
+
+<Note>
+The Analyzer pattern provides a clean separation between data structure (Data class) and data processing logic (Analyzer classes).
+</Note>
+
+## The Analyzer Pattern
+
+### Core Principle
+
+Each `Data` method expects an Analyzer of a specific type:
+
+```python
+from datamanipylator import Data, AnalyzerFilter
+
+class LargeValues(AnalyzerFilter):
+    def __init__(self, threshold):
+        self.threshold = threshold
+    
+    def filter(self, item):
+        return item > self.threshold
+
+data = Data([1, 5, 10, 15, 20])
+filtered = data.filter(LargeValues(10))  # Returns Data([15, 20])
+```
+
+### Type Safety
+
+Each Analyzer has an `analyzertype` attribute that ensures it matches the called method:
+
+```python
+class AnalyzerFilter(Analyzer):
+    analyzertype = "filter"
+    
+    def filter(self, item):
+        raise NotImplementedError
+```
+
+<Warning>
+Passing an analyzer that doesn't implement the correct method will raise an `IncorrectAnalyzer` exception.
+</Warning>
+
+## Analyzer Types
+
+DataManipylator provides seven base analyzer types, each corresponding to a Data method:
+
+### AnalyzerIndexBy
+
+Groups data items into dictionary keys.
+
+**Method signature:** `indexby(item) -> str | int | tuple | list`
+
+**Inputs:** A single data item  
+**Outputs:** The dictionary key(s) for this item
+
+```python
+from datamanipylator import AnalyzerIndexBy
+
+class GroupByStatus(AnalyzerIndexBy):
+    def indexby(self, job):
+        return job.status
+
+class GroupByPriority(AnalyzerIndexBy):
+    def indexby(self, job):
+        if job.priority < 5:
+            return "low"
+        elif job.priority < 8:
+            return "medium"
+        else:
+            return "high"
+
+# Multiple keys: item will appear in multiple groups
+class GroupByTags(AnalyzerIndexBy):
+    def indexby(self, job):
+        # Return tuple or list to place item in multiple groups
+        return job.tags  # e.g., ["urgent", "production"]
+```
+
+<Info>
+If `indexby()` returns `None`, the item is excluded from the result. Return a tuple or list to place an item in multiple groups.
+</Info>
+
+### AnalyzerMap
+
+Transforms each data item.
+
+**Method signature:** `map(item) -> any`
+
+**Inputs:** A single data item  
+**Outputs:** The transformed item
+
+```python
+from datamanipylator import AnalyzerMap
+
+class ExtractName(AnalyzerMap):
+    def map(self, job):
+        return job.name
+
+class NormalizeScore(AnalyzerMap):
+    def __init__(self, max_score):
+        self.max_score = max_score
+    
+    def map(self, score):
+        return score / self.max_score
+
+class EnrichWithMetadata(AnalyzerMap):
+    def map(self, job):
+        return {
+            "job": job,
+            "processed_at": time.time(),
+            "version": "2.0"
+        }
+```
+
+### AnalyzerFilter
+
+Determines which items to keep.
+
+**Method signature:** `filter(item) -> bool`
+
+**Inputs:** A single data item  
+**Outputs:** `True` to keep, `False` to exclude
+
+```python
+from datamanipylator import AnalyzerFilter
+
+class OnlyCompleted(AnalyzerFilter):
+    def filter(self, job):
+        return job.status == "completed"
+
+class DurationRange(AnalyzerFilter):
+    def __init__(self, min_duration, max_duration):
+        self.min_duration = min_duration
+        self.max_duration = max_duration
+    
+    def filter(self, job):
+        return self.min_duration <= job.duration <= self.max_duration
+
+class HasTag(AnalyzerFilter):
+    def __init__(self, tag):
+        self.tag = tag
+    
+    def filter(self, job):
+        return self.tag in job.tags
+```
+
+### AnalyzerReduce
+
+Aggregates all items into a single value.
+
+**Method signature:** `reduce(item1, item2) -> any`
+
+**Inputs:** Two data items (or accumulated value and next item)  
+**Outputs:** The aggregated value
+
+```python
+from datamanipylator import AnalyzerReduce
+
+class SumDuration(AnalyzerReduce):
+    def __init__(self):
+        super().__init__(init_value=0)
+    
+    def reduce(self, accumulated, job):
+        return accumulated + job.duration
+
+class CountByStatus(AnalyzerReduce):
+    def __init__(self):
+        super().__init__(init_value={})
+    
+    def reduce(self, counts, job):
+        status = job.status
+        counts[status] = counts.get(status, 0) + 1
+        return counts
+
+class MaxValue(AnalyzerReduce):
+    def reduce(self, val1, val2):
+        # No initial value - uses first item
+        return val1 if val1 > val2 else val2
+```
+
+<Tip>
+Use the `init_value` parameter to set an initial accumulator value. If not provided, the first two items are used to start the reduction.
+</Tip>
+
+### AnalyzerTransform
+
+Processes the entire list at once.
+
+**Method signature:** `transform(items_list) -> list`
+
+**Inputs:** The complete list of data items  
+**Outputs:** A new list of items
+
+```python
+from datamanipylator import AnalyzerTransform
+
+class RemoveDuplicates(AnalyzerTransform):
+    def transform(self, jobs_list):
+        seen = set()
+        result = []
+        for job in jobs_list:
+            if job.id not in seen:
+                seen.add(job.id)
+                result.append(job)
+        return result
+
+class BatchProcessor(AnalyzerTransform):
+    def __init__(self, batch_size):
+        self.batch_size = batch_size
+    
+    def transform(self, items_list):
+        # Process in batches and return modified list
+        batches = [items_list[i:i+self.batch_size] 
+                   for i in range(0, len(items_list), self.batch_size)]
+        return [process_batch(batch) for batch in batches]
+
+class Shuffle(AnalyzerTransform):
+    def transform(self, items_list):
+        import random
+        shuffled = items_list.copy()
+        random.shuffle(shuffled)
+        return shuffled
+```
+
+### AnalyzerSort
+
+Defines comparison logic for sorting.
+
+**Method signature:** `sort(item1, item2) -> int`
+
+**Inputs:** Two data items to compare  
+**Outputs:** `-1` (item1 < item2), `0` (equal), or `1` (item1 > item2)
+
+```python
+from datamanipylator import AnalyzerSort
+
+class SortByDuration(AnalyzerSort):
+    def sort(self, job1, job2):
+        if job1.duration < job2.duration:
+            return -1
+        elif job1.duration > job2.duration:
+            return 1
+        else:
+            return 0
+
+class SortByPriorityThenName(AnalyzerSort):
+    def sort(self, job1, job2):
+        # First compare by priority (descending)
+        if job1.priority > job2.priority:
+            return -1
+        elif job1.priority < job2.priority:
+            return 1
+        # If equal, compare by name (ascending)
+        elif job1.name < job2.name:
+            return -1
+        elif job1.name > job2.name:
+            return 1
+        else:
+            return 0
+```
+
+### AnalyzerProcess
+
+Performs custom processing with any return type.
+
+**Method signature:** `process(items_list) -> any`
+
+**Inputs:** The complete list of data items  
+**Outputs:** Anything (statistics, report, file path, etc.)
+
+```python
+from datamanipylator import AnalyzerProcess
+
+class GenerateReport(AnalyzerProcess):
+    def process(self, jobs_list):
+        total = len(jobs_list)
+        completed = sum(1 for j in jobs_list if j.status == "completed")
+        avg_duration = sum(j.duration for j in jobs_list) / total
+        
+        return {
+            "total_jobs": total,
+            "completed": completed,
+            "completion_rate": completed / total,
+            "avg_duration": avg_duration
+        }
+
+class ExportToFile(AnalyzerProcess):
+    def __init__(self, filename):
+        self.filename = filename
+    
+    def process(self, items_list):
+        with open(self.filename, 'w') as f:
+            for item in items_list:
+                f.write(str(item) + '\n')
+        return self.filename
+
+class FindOutliers(AnalyzerProcess):
+    def process(self, values_list):
+        mean = sum(values_list) / len(values_list)
+        std = (sum((x - mean)**2 for x in values_list) / len(values_list))**0.5
+        threshold = mean + 2 * std
+        return [v for v in values_list if v > threshold]
+```
+
+## Analyzer Reference Table
+
+| **Data Method** | **Analyzer Type**     | **Analyzer Method** | **Inputs**           | **Outputs**                   | **Returns Mutable?** |
+|-----------------|-----------------------|---------------------|----------------------|-------------------------------|----------------------|
+| `indexby()`     | `AnalyzerIndexBy`     | `indexby()`         | single item          | key(s) for dictionary         | Yes (_DictData)      |
+| `map()`         | `AnalyzerMap`         | `map()`             | single item          | transformed item              | Yes (Data)           |
+| `filter()`      | `AnalyzerFilter`      | `filter()`          | single item          | True/False                    | Yes (Data)           |
+| `reduce()`      | `AnalyzerReduce`      | `reduce()`          | two items            | aggregated value              | No (_NonMutableData) |
+| `transform()`   | `AnalyzerTransform`   | `transform()`       | complete list        | new list                      | Yes (Data)           |
+| `sort()`        | `AnalyzerSort`        | `sort()`            | two items            | -1, 0, or 1                   | Yes (Data)           |
+| `process()`     | `AnalyzerProcess`     | `process()`         | complete list        | anything                      | No (_NonMutableData) |
+
+## Lambda Functions as Shortcuts
+
+For simple operations, you can use lambda functions instead of creating Analyzer classes:
+
+```python
+data = Data([1, 2, 3, 4, 5])
+
+# Using lambda for filter
+filtered = data.filter(lambda x: x > 2)
+
+# Using lambda for map
+mapped = data.map(lambda x: x * 2)
+
+# Using lambda for reduce
+total = data.reduce(lambda acc, x: acc + x)
+```
+
+<Warning>
+Lambda functions work for `filter()`, `map()`, and `reduce()` methods. For `indexby()`, `transform()`, `sort()`, and `process()`, you must use proper Analyzer classes.
+</Warning>
+
+## Best Practices
+
+<Accordion title="Make Analyzers Reusable">
+Design analyzers with parameters to make them flexible:
+
+```python
+class ThresholdFilter(AnalyzerFilter):
+    def __init__(self, field, threshold, operator=">"):
+        self.field = field
+        self.threshold = threshold
+        self.operator = operator
+    
+    def filter(self, item):
+        value = getattr(item, self.field)
+        if self.operator == ">":
+            return value > self.threshold
+        elif self.operator == "<":
+            return value < self.threshold
+        elif self.operator == "==":
+            return value == self.threshold
+```
+</Accordion>
+
+<Accordion title="Keep Analyzers Focused">
+Each analyzer should do one thing well:
+
+```python
+# Good: Single responsibility
+class FilterByStatus(AnalyzerFilter):
+    def filter(self, job):
+        return job.status == "completed"
+
+class FilterByDuration(AnalyzerFilter):
+    def filter(self, job):
+        return job.duration > 100
+
+# Use: Chain multiple analyzers
+result = data.filter(FilterByStatus()).filter(FilterByDuration())
+```
+</Accordion>
+
+<Accordion title="Handle Edge Cases">
+Make your analyzers robust:
+
+```python
+class SafeDivide(AnalyzerMap):
+    def __init__(self, divisor):
+        self.divisor = divisor
+    
+    def map(self, value):
+        if self.divisor == 0:
+            return None  # or raise exception, or return default
+        return value / self.divisor
+
+class SafeIndexBy(AnalyzerIndexBy):
+    def indexby(self, item):
+        # Return None to exclude items with missing attributes
+        return getattr(item, 'category', None)
+```
+</Accordion>
+
+## Related Concepts
+
+- [Data Class](/concepts/data-class) - How Data objects work with Analyzers
+- [Algorithms](/concepts/algorithms) - Compose multiple Analyzers together
+- [Immutability](/concepts/immutability) - Why analyzers don't modify source data

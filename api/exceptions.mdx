@@ -1,0 +1,101 @@
+---
+title: "Exceptions"
+description: "Exception classes used throughout DataManipylator"
+---
+
+DataManipylator defines custom exception classes to handle various error conditions during data processing and analysis.
+
+## IncorrectInputDataType
+
+Raised when input data does not match the expected type.
+
+<ParamField path="type" type="str">
+  The expected data type that was not matched
+</ParamField>
+
+**Example:**
+
+```python
+from datamanipylator.exceptions import IncorrectInputDataType
+
+# Raised when data type validation fails
+if not isinstance(data, pd.DataFrame):
+    raise IncorrectInputDataType('DataFrame')
+```
+
+## NotAnAnalyzer
+
+Raised when an object does not have a valid `analyzertype` value.
+
+**Example:**
+
+```python
+from datamanipylator.exceptions import NotAnAnalyzer
+
+# Raised when object lacks valid analyzer type
+if not hasattr(obj, 'analyzertype') or obj.analyzertype is None:
+    raise NotAnAnalyzer()
+```
+
+## IncorrectAnalyzer
+
+Raised when an analyzer object is used with an incompatible method.
+
+<ParamField path="analyzer" type="object">
+  The analyzer object being used
+</ParamField>
+
+<ParamField path="analyzertype" type="str">
+  The actual type of the analyzer
+</ParamField>
+
+<ParamField path="methodname" type="str">
+  The method name that was called
+</ParamField>
+
+**Example:**
+
+```python
+from datamanipylator.exceptions import IncorrectAnalyzer
+
+# Raised when analyzer type doesn't match the method being called
+if analyzer.analyzertype != 'statistical':
+    raise IncorrectAnalyzer(analyzer, analyzer.analyzertype, 'calculate_mean')
+```
+
+## MissingKeyException
+
+Raised when a required key is not found in a data dictionary.
+
+<ParamField path="key" type="str">
+  The missing key name
+</ParamField>
+
+**Example:**
+
+```python
+from datamanipylator.exceptions import MissingKeyException
+
+# Raised when accessing a non-existent key
+if key not in data_dict:
+    raise MissingKeyException(key)
+```
+
+## AnalyzerFailure
+
+Generic exception for any unclassified analyzer failure.
+
+<ParamField path="value" type="str">
+  Description of the failure
+</ParamField>
+
+**Example:**
+
+```python
+from datamanipylator.exceptions import AnalyzerFailure
+
+try:
+    result = analyzer.process(data)
+except Exception as e:
+    raise AnalyzerFailure(f"Analysis failed: {str(e)}")
+```

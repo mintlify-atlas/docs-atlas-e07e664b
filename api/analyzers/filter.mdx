@@ -1,0 +1,123 @@
+---
+title: AnalyzerFilter
+description: Keep or remove items based on conditional logic
+---
+
+## Overview
+
+The `AnalyzerFilter` analyzer allows you to filter your data based on custom conditions. Each item is passed to the `filter()` method, which returns `True` to keep the item or `False` to remove it.
+
+The result is a new `Data` instance containing only the items that passed your filter condition.
+
+## Class Signature
+
+```python
+class AnalyzerFilter(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"filter"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `filter()` method in your analyzer:
+
+```python
+def filter(self, item)
+```
+
+<ParamField path="item" type="any" required>
+  An individual element from the `Data.data` list
+</ParamField>
+
+<ResponseField name="return" type="bool" required>
+  `True` if the item should be kept, `False` if it should be removed
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerFilter
+
+class Job:
+    def __init__(self, title, salary):
+        self.title = title
+        self.salary = salary
+
+class HighSalaryJobs(AnalyzerFilter):
+    def __init__(self, threshold):
+        self.threshold = threshold
+    
+    def filter(self, job):
+        return job.salary >= self.threshold
+
+jobs = [
+    Job("Engineer", 120000),
+    Job("Designer", 85000),
+    Job("Manager", 150000),
+    Job("Intern", 45000)
+]
+
+data = Data(jobs)
+filtered = data.filter(HighSalaryJobs(100000))
+raw = filtered.getraw()
+
+# Result: only Engineer and Manager jobs
+```
+
+## Parameterized Filters
+
+Filters can accept constructor parameters to make them reusable:
+
+```python
+class TooLarge(AnalyzerFilter):
+    def __init__(self, max_value):
+        self.max_value = max_value
+    
+    def filter(self, item):
+        return item.value <= self.max_value
+
+# Reuse with different thresholds
+data1 = data.filter(TooLarge(100))
+data2 = data.filter(TooLarge(500))
+```
+
+## Combining Multiple Filters
+
+You can chain multiple filter operations:
+
+```python
+class ActiveJobs(AnalyzerFilter):
+    def filter(self, job):
+        return job.status == "active"
+
+data = Data(jobs)
+data = data.filter(ActiveJobs())
+data = data.filter(HighSalaryJobs(100000))
+
+# Result: only active jobs with salary >= 100000
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="object">
+  A single item from the list of data objects being analyzed
+</ParamField>
+
+<ParamField path="Output" type="bool">
+  Boolean indicating whether the item should be kept (`True`) or removed (`False`)
+</ParamField>
+
+## Key Considerations
+
+- The method is called once for each item in your dataset
+- Return `True` to include the item in the result, `False` to exclude it
+- Filters create a new `Data` instance and don't modify the original data
+- Multiple filters can be chained to build complex filtering logic
+- The order of filters can affect performance (apply the most restrictive first)
+
+## Related
+
+- [Data.filter()](/api/data#filter) - The method that uses this analyzer
+- [Map Analyzer](/api/analyzers/map) - For transforming items instead of filtering

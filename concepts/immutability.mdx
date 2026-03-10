@@ -1,0 +1,329 @@
+---
+title: "Immutability"
+description: "Understanding why DataManipylator operations return new instances"
+---
+
+## Overview
+
+DataManipylator is built on a fundamental principle: **all operations return new instances** rather than modifying existing data. This immutable design pattern provides significant benefits for data processing workflows.
+
+<Note>
+Immutability means that once a Data object is created, its internal data never changes. Every method returns a new Data object with the transformed data.
+</Note>
+
+## Why Immutability?
+
+### Safe Parallel Processing
+
+Immutability eliminates race conditions when processing data in parallel:
+
+```python
+from datamanipylator import Data
+import concurrent.futures
+
+original = Data(large_dataset)
+
+# All threads can safely read from original simultaneously
+def process_region(region_filter):
+    return original.filter(region_filter).reduce(SumValues())
+
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    results = executor.map(process_region, region_filters)
+```
+
+<Info>
+Because `original` never changes, multiple threads can operate on it simultaneously without locks, mutexes, or other synchronization mechanisms.
+</Info>
+
+### Multiple Analysis Branches
+
+Immutability allows you to explore different analysis paths from the same source:
+
+```python
+data = Data(jobs)
+
+# Branch 1: Analyze completed jobs
+completed_analysis = (
+    data
+    .filter(lambda j: j.status == "completed")
+    .map(lambda j: j.duration)
+    .reduce(lambda acc, x: acc + x)
+)
+
+# Branch 2: Analyze failed jobs
+failed_analysis = (
+    data
+    .filter(lambda j: j.status == "failed")
+    .map(lambda j: j.error_code)
+    .indexby(lambda code: code)
+)
+
+# Branch 3: Get all job names
+all_names = data.map(lambda j: j.name)
+
+# 'data' is still unchanged and contains all original jobs
+```
+
+<Tip>
+This branching capability is especially useful for comparative analysis and A/B testing scenarios.
+</Tip>
+
+### Method Chaining
+
+Immutability enables clean, functional-style method chaining:
+
+```python
+result = (
+    Data(raw_jobs)
+    .filter(ValidJobsOnly())
+    .map(NormalizeFields())
+    .indexby(GroupByRegion())
+    .map(CalculateRegionalMetrics())
+    .reduce(AggregateAcrossRegions())
+)
+```
+
+Each step returns a new object, making the pipeline clear and debuggable.
+
+### Predictable Debugging
+
+Immutability makes debugging easier because data never changes unexpectedly:
+
+```python
+data = Data(jobs)
+print(f"Initial count: {data.count().getraw()}")
+
+# Multiple operations
+filtered = data.filter(SomeFilter())
+print(f"After filter: {filtered.count().getraw()}")
+
+mapped = filtered.map(SomeMap())
+print(f"After map: {mapped.count().getraw()}")
+
+# You can always go back and inspect earlier states
+print(f"Original still has: {data.count().getraw()}")
+print(f"Filtered still has: {filtered.count().getraw()}")
+```
+
+## How Immutability Works
+
+### Return New Instances
+
+Every Data method creates a new instance:
+
+```python
+# From data.py:153-160
+class Data(_Base, _AnalysisInterface, _GetRawBase):
+    def filter(self, lambdafilter):
+        self.log.debug('Starting with lambda %s' %lambdafilter)
+        new_data = self.__filter(lambdafilter)  # Process data
+        new_info = Data(new_data, timestamp=self.timestamp)  # NEW instance
+        return new_info
+```
+
+Notice how `filter()` creates and returns `new_info` - a completely new Data object.
+
+### Timestamp Preservation
+
+Timestamps are preserved through transformations:
+
+```python
+import time
+
+original = Data([1, 2, 3])
+original_time = original.timestamp
+
+time.sleep(2)
+
+filtered = original.filter(lambda x: x > 1)
+print(filtered.timestamp == original_time)  # True!
+```
+
+This helps track the provenance of your data through complex pipelines.
+
+### Dictionary Nesting
+
+Even when creating nested dictionaries with `indexby()`, immutability is preserved:
+
+```python
+data = Data(jobs)
+
+# Creates _DictData with nested Data objects
+by_region = data.indexby(GroupByRegion())
+
+# Original 'data' unchanged
+print(data.count().getraw())  # All jobs still present
+
+# Can further process any branch
+us_east = by_region["us-east"]
+us_east_completed = us_east.filter(lambda j: j.status == "completed")
+
+# us_east is still unchanged
+print(us_east.count().getraw())  # All us-east jobs still present
+```
+
+## The Cost of Immutability
+
+### Memory Overhead
+
+Each operation creates new objects, which uses more memory:
+
+```python
+# Each step creates a new list in memory
+step1 = Data(large_list)              # Memory: 1x
+step2 = step1.filter(filter_func)     # Memory: 2x (worst case)
+step3 = step2.map(map_func)           # Memory: 3x (worst case)
+```
+
+<Warning>
+For very large datasets (millions of items), consider processing in batches or using generators for intermediate steps before wrapping in Data.
+</Warning>
+
+### Performance Considerations
+
+Mitigation strategies:
+
+<Accordion title="Use Algorithms for Complex Pipelines">
+The Algorithm class can optimize multi-step operations:
+
+```python
+from datamanipylator import Algorithm
+
+algo = Algorithm()
+algo.add(FilterStep())
+algo.add(MapStep())
+algo.add(IndexByStep())
+
+# Single call, potential for optimization
+result = data.apply_algorithm(algo)
+```
+</Accordion>
+
+<Accordion title="Let Go of Intermediate Results">
+Python's garbage collector will free memory when references are dropped:
+
+```python
+# Bad: Keeping all intermediate steps
+step1 = data.filter(f1)
+step2 = step1.map(m1)
+step3 = step2.filter(f2)
+result = step3.reduce(r1)
+
+# Better: Chain without intermediate variables
+result = (
+    data
+    .filter(f1)
+    .map(m1)
+    .filter(f2)
+    .reduce(r1)
+)
+```
+</Accordion>
+
+<Accordion title="Process Early, Filter Early">
+Reduce dataset size as soon as possible:
+
+```python
+# Good: Filter reduces data volume immediately
+result = (
+    Data(huge_list)
+    .filter(OnlyRelevantItems())      # Reduces size by 90%
+    .map(ExpensiveTransform())        # Now processing 10% of data
+    .indexby(GroupBy())               # Much faster
+)
+
+# Bad: Filter at the end
+result = (
+    Data(huge_list)
+    .map(ExpensiveTransform())        # Processing 100% of data
+    .indexby(GroupBy())               # Still processing all
+    .filter(OnlyRelevantItems())      # Filter should be first!
+)
+```
+</Accordion>
+
+## Immutability vs Traditional Approaches
+
+### Traditional Mutable Approach
+
+```python
+# Traditional Python: Modifying in place
+jobs = [job1, job2, job3]
+
+# Dangerous: Modifying while iterating
+for i in range(len(jobs)):
+    if jobs[i].duration > 100:
+        jobs[i].priority += 1  # Modifies original!
+
+# Can't go back to original state
+# Parallel processing requires careful locking
+# Hard to debug what changed when
+```
+
+### DataManipylator Immutable Approach
+
+```python
+# DataManipylator: New instances
+original_jobs = Data([job1, job2, job3])
+
+class BoostPriority(AnalyzerMap):
+    def map(self, job):
+        if job.duration > 100:
+            # Return new object, don't modify original
+            return Job(job.name, job.status, job.priority + 1)
+        return job
+
+boosted_jobs = original_jobs.map(BoostPriority())
+
+# original_jobs unchanged - can reuse or compare
+# Safe for parallel processing
+# Clear audit trail of transformations
+```
+
+## When Immutability Shines
+
+<CardGroup cols={2}>
+  <Card title="Parallel Processing" icon="code-branch">
+    Multiple threads/processes can safely read the same Data object without synchronization
+  </Card>
+  <Card title="Exploratory Analysis" icon="magnifying-glass-chart">
+    Try different analysis paths from the same starting point without data corruption
+  </Card>
+  <Card title="Audit Trails" icon="timeline">
+    Keep references to intermediate states for debugging or comparison
+  </Card>
+  <Card title="Functional Pipelines" icon="pipe">
+    Build complex transformations as composable, testable units
+  </Card>
+</CardGroup>
+
+## Mutable vs Non-Mutable Returns
+
+Not all Data methods return objects that can be further processed:
+
+```python
+data = Data([1, 2, 3, 4, 5])
+
+# Returns mutable Data - can chain more operations
+filtered = data.filter(lambda x: x > 2)  # Data object
+doubled = filtered.map(lambda x: x * 2)  # Data object
+
+# Returns non-mutable _NonMutableData - terminal operations
+total = doubled.reduce(lambda acc, x: acc + x)  # _NonMutableData
+
+# This will FAIL - can't call methods on _NonMutableData
+# result = total.map(lambda x: x * 2)  # Exception!
+
+# Must use getraw() to extract value
+final_value = total.getraw()  # 14
+```
+
+<Info>
+Think of non-mutable returns as the "final answer" of a calculation pipeline. Use `getraw()` to extract the value.
+</Info>
+
+## Related Concepts
+
+- [Data Class](/concepts/data-class) - How the Data class implements immutability
+- [Analyzers](/concepts/analyzers) - Creating logic that works with immutable data
+- [Algorithms](/concepts/algorithms) - Composing immutable operations

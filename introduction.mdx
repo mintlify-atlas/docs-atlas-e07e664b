@@ -1,0 +1,86 @@
+---
+title: "Introduction"
+description: "A Python library for functional data manipulation with chainable operations"
+---
+
+# DataManipylator
+
+DataManipylator is a Python library that provides a powerful and elegant way to manipulate data using functional programming patterns. It offers chainable operations like map, filter, reduce, and indexby, allowing you to process lists of data objects with immutable, composable transformations.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Functional Operations" icon="function">
+    Chain map, filter, reduce, and indexby operations for clean, declarative data processing
+  </Card>
+  <Card title="Immutable Data" icon="lock">
+    All operations return new instances, preserving original data and enabling safe parallel processing
+  </Card>
+  <Card title="Custom Analyzers" icon="wrench">
+    Extend functionality with custom analyzer classes for domain-specific transformations
+  </Card>
+  <Card title="Algorithm Composition" icon="diagram-project">
+    Compose multiple analyzers into reusable algorithms for complex data pipelines
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+DataManipylator is ideal for:
+
+- Processing collections of objects (like HTCondor ClassAds or database records)
+- Building data transformation pipelines with multiple steps
+- Aggregating and analyzing structured data
+- Creating reusable data processing workflows
+
+## Quick Example
+
+```python
+from datamanipylator.data import Data
+from datamanipylator.analyzers import AnalyzerFilter, AnalyzerIndexBy, AnalyzerReduce
+
+# Create a Data object with a list
+data = Data([
+    {"name": "Alice", "score": 85},
+    {"name": "Bob", "score": 92},
+    {"name": "Charlie", "score": 78}
+])
+
+# Filter high scorers
+class HighScorer(AnalyzerFilter):
+    def filter(self, item):
+        return item["score"] >= 80
+
+# Index by score range
+class ScoreRange(AnalyzerIndexBy):
+    def indexby(self, item):
+        if item["score"] >= 90:
+            return "excellent"
+        elif item["score"] >= 80:
+            return "good"
+        else:
+            return "needs_improvement"
+
+# Apply transformations
+result = data.filter(HighScorer()).indexby(ScoreRange())
+print(result.getraw())
+# Output: {'excellent': [{'name': 'Bob', 'score': 92}], 
+#          'good': [{'name': 'Alice', 'score': 85}]}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install DataManipylator using pip
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/data-class">
+    Learn about the Data class and analyzers
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/data">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

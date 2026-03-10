@@ -1,0 +1,251 @@
+---
+title: "Data Class"
+description: "Understanding the core Data class and its immutable operations"
+---
+
+## Overview
+
+The `Data` class is the primary public interface of DataManipylator. It provides a functional, immutable approach to data manipulation where every operation returns a new instance rather than modifying the original data.
+
+<Note>
+The Data class stores data as a list of items. These items can be anything - objects, primitives, or even complex data structures like HTCondor ClassAds.
+</Note>
+
+## Core Characteristics
+
+### Immutability by Design
+
+Every method in the `Data` class creates and returns a **new instance** instead of modifying the current object. This design enables:
+
+- Safe parallel processing without race conditions
+- Ability to branch operations from the same source
+- Predictable functional composition
+- Easy debugging and testing
+
+```python
+from datamanipylator import Data
+
+# Original data remains unchanged
+original_data = Data([1, 2, 3, 4, 5])
+
+# Each operation returns a new instance
+filtered = original_data.filter(lambda x: x > 2)
+evens = original_data.filter(lambda x: x % 2 == 0)
+
+# original_data is still [1, 2, 3, 4, 5]
+print(original_data.getraw())  # [1, 2, 3, 4, 5]
+print(filtered.getraw())        # [3, 4, 5]
+print(evens.getraw())           # [2, 4]
+```
+
+## Method Categories
+
+Data class methods fall into two distinct categories based on their output type:
+
+### Methods Returning Mutable Data Objects
+
+These methods return new `Data` or `_DictData` instances that **accept further processing**:
+
+<CardGroup cols={2}>
+  <Card title="indexby()" icon="layer-group">
+    Groups data into a dictionary structure based on keys
+  </Card>
+  <Card title="map()" icon="wand-magic-sparkles">
+    Transforms each item using a mapping function
+  </Card>
+  <Card title="filter()" icon="filter">
+    Selects items that match a condition
+  </Card>
+  <Card title="transform()" icon="rotate">
+    Processes the entire list at once
+  </Card>
+  <Card title="sort()" icon="arrow-down-a-z">
+    Orders items based on comparison logic
+  </Card>
+</CardGroup>
+
+### Methods Returning Non-Mutable Data Objects
+
+These methods return `_NonMutableData` instances that **cannot be processed further**. Attempting to call any method on these instances will raise an exception:
+
+<CardGroup cols={2}>
+  <Card title="reduce()" icon="compress">
+    Aggregates all items into a single value
+  </Card>
+  <Card title="process()" icon="gears">
+    Performs custom processing returning any type
+  </Card>
+  <Card title="count()" icon="hashtag">
+    Returns the number of items in the data
+  </Card>
+</CardGroup>
+
+<Warning>
+Once you call `reduce()`, `process()`, or `count()`, the returned object is terminal - you cannot chain additional operations on it. Use `getraw()` to extract the final value.
+</Warning>
+
+## Class Hierarchy
+
+The Data class is part of a sophisticated inheritance structure:
+
+```
+                                                                +--------+      
+                                                                | object |
+                                                                +--------+
+                                                                    ^
+                                                                    |
+     +--------------------+                                     +-------+
+     | _AnalysisInterface |    +------------------------------->| _Base |<-----------------+                  
+     +--------------------+    |                                +-------+                  |
+       ^                ^      |        +-------------+             ^               +-----------+              
+       |                |      |        | _GetRawBase |             |               | _BaseDict |       
+       |                |      |        +-------------+             |               +-----------+      
+       |                |      |          ^        ^                |                 ^      ^     
+       |                |      |          |        |                |                 |      |   
+       |                |      |          |        |                |                 |      |   
+       |            +==============+      |        |   +-----------------------+      |      |
+       |            || Data       ||------+        +---| _NonMutableData       |      |      |
+       |            +==============+                   +-----------------------+      |      |
+       |                                    +-----------------+                       |  +---------------------------+
+       +------------------------------------| _DictData       |-----------------------+  | _NonMutableDictData       |
+                                            +-----------------+                          +---------------------------+
+```
+
+<Info>
+Only the `Data` class is part of the public API. All other classes (prefixed with `_`) are internal implementation details.
+</Info>
+
+## Initialization
+
+Create a Data instance by passing a list:
+
+```python
+from datamanipylator import Data
+
+# Simple list
+data = Data([1, 2, 3, 4, 5])
+
+# List of objects
+class Job:
+    def __init__(self, name, status, duration):
+        self.name = name
+        self.status = status
+        self.duration = duration
+
+jobs = [
+    Job("job1", "completed", 120),
+    Job("job2", "running", 45),
+    Job("job3", "completed", 200)
+]
+
+data = Data(jobs)
+```
+
+## Accessing Raw Data
+
+Use `getraw()` to retrieve the underlying data:
+
+```python
+data = Data([1, 2, 3, 4, 5])
+raw_list = data.getraw()  # Returns [1, 2, 3, 4, 5]
+```
+
+<Tip>
+When working with `_DictData` (result of `indexby()`), `getraw()` recursively extracts raw data from all nested Data objects in the dictionary.
+</Tip>
+
+## The Special indexby() Method
+
+The `indexby()` method is unique because it transforms list-based data into a dictionary structure:
+
+```python
+from datamanipylator import Data, AnalyzerIndexBy
+
+class GroupByStatus(AnalyzerIndexBy):
+    def indexby(self, job):
+        return job.status
+
+jobs_data = Data(jobs)
+grouped = jobs_data.indexby(GroupByStatus())
+
+# Returns _DictData with structure:
+# {
+#   "completed": Data([job1, job3]),
+#   "running": Data([job2])
+# }
+
+# Access specific groups
+completed_jobs = grouped["completed"]
+print(completed_jobs.getraw())
+```
+
+## Timestamps
+
+All Data instances track when they were created:
+
+```python
+data = Data([1, 2, 3])
+print(data.timestamp)  # Unix timestamp (e.g., 1647098234)
+
+# Timestamp is preserved through operations
+filtered = data.filter(lambda x: x > 1)
+print(filtered.timestamp)  # Same as original
+```
+
+## Working with Nested Dictionaries
+
+After calling `indexby()` multiple times, you can navigate nested structures using the `get()` method:
+
+```python
+# After multiple indexby operations
+data = data.indexby(GroupByRegion()).indexby(GroupByStatus())
+
+# Navigate to specific nested data
+region_data = data.get("us-east", "completed")
+raw_data = region_data.getraw()
+```
+
+## Best Practices
+
+<Accordion title="Chain operations for readability">
+Take advantage of immutability to create clear data processing pipelines:
+
+```python
+result = (Data(jobs)
+    .filter(lambda j: j.duration > 100)
+    .map(lambda j: j.name)
+    .sort(lambda a, b: -1 if a < b else 1 if a > b else 0))
+```
+</Accordion>
+
+<Accordion title="Branch from a single source">
+Since operations don't modify the original, you can safely create multiple derived datasets:
+
+```python
+all_jobs = Data(jobs)
+
+completed = all_jobs.filter(lambda j: j.status == "completed")
+running = all_jobs.filter(lambda j: j.status == "running")
+long_running = all_jobs.filter(lambda j: j.duration > 100)
+```
+</Accordion>
+
+<Accordion title="Use getraw() sparingly">
+Keep data in Data objects as long as possible to maintain the benefits of the framework:
+
+```python
+# Good: Stay in Data context
+processed = data.filter(analyzer1).map(analyzer2)
+final_result = processed.reduce(analyzer3).getraw()
+
+# Avoid: Extracting too early
+raw = data.getraw()
+processed = [item for item in raw if some_condition(item)]  # Manual processing
+```
+</Accordion>
+
+## Related Concepts
+
+- [Analyzers](/concepts/analyzers) - Define the logic for each operation
+- [Immutability](/concepts/immutability) - Deep dive into the benefits of immutable operations
+- [Algorithms](/concepts/algorithms) - Compose multiple operations together

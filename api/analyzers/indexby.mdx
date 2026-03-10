@@ -1,0 +1,113 @@
+---
+title: AnalyzerIndexBy
+description: Group data into a dictionary based on key functions
+---
+
+## Overview
+
+The `AnalyzerIndexBy` analyzer groups your data into a dictionary based on keys you define. Each item in your data is passed to the `indexby()` method, which returns the key under which that item should be stored.
+
+The result is an `_DictData` object where each value is a `Data` instance containing all items that mapped to that key.
+
+## Class Signature
+
+```python
+class AnalyzerIndexBy(Analyzer)
+```
+
+<ParamField path="analyzertype" type="str" default='"indexby"'>
+  The analyzer type identifier (automatically set)
+</ParamField>
+
+## Required Method
+
+You must implement the `indexby()` method in your analyzer:
+
+```python
+def indexby(self, item)
+```
+
+<ParamField path="item" type="any" required>
+  An individual element from the `Data.data` list
+</ParamField>
+
+<ResponseField name="return" type="str" required>
+  The key under which this item should be grouped in the resulting dictionary
+</ResponseField>
+
+## Usage Example
+
+```python
+from datamanipylator import Data, AnalyzerIndexBy
+
+class Employee:
+    def __init__(self, name, department):
+        self.name = name
+        self.department = department
+
+class GroupByDepartment(AnalyzerIndexBy):
+    def indexby(self, employee):
+        return employee.department
+
+employees = [
+    Employee("Alice", "Engineering"),
+    Employee("Bob", "Sales"),
+    Employee("Charlie", "Engineering"),
+    Employee("Diana", "Sales")
+]
+
+data = Data(employees)
+grouped = data.indexby(GroupByDepartment())
+raw = grouped.getraw()
+
+# Result:
+# {
+#   "Engineering": <Data with [Alice, Charlie]>,
+#   "Sales": <Data with [Bob, Diana]>
+# }
+```
+
+## Chaining IndexBy Operations
+
+You can call `indexby()` multiple times to create nested groupings:
+
+```python
+class GroupByStatus(AnalyzerIndexBy):
+    def indexby(self, employee):
+        return employee.status  # "full-time" or "part-time"
+
+data = Data(employees)
+data = data.indexby(GroupByDepartment())
+data = data.indexby(GroupByStatus())
+
+# Result: nested dictionary grouped by department, then by status
+# {
+#   "Engineering": {
+#     "full-time": <Data>,
+#     "part-time": <Data>
+#   },
+#   "Sales": { ... }
+# }
+```
+
+## Implementation Requirements
+
+<ParamField path="Input" type="object">
+  A single item from the list of data objects being analyzed
+</ParamField>
+
+<ParamField path="Output" type="str">
+  The dictionary key under which this item will be stored. Should be a string that represents the grouping category.
+</ParamField>
+
+## Key Considerations
+
+- The return value should be a string that serves as a valid dictionary key
+- All items returning the same key will be grouped together in a single `Data` instance
+- The method is called once for each item in your dataset
+- Further processing can be applied to each grouped `Data` instance
+
+## Related
+
+- [Data.indexby()](/api/data#indexby) - The method that uses this analyzer
+- [Transform Analyzer](/api/analyzers/transform) - For more complex list transformations

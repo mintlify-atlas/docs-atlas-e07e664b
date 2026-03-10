@@ -1,0 +1,106 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "DataManipylator",
+  "projectDescription": "A Python library for functional data manipulation with chainable operations like map, filter, reduce, and indexby.",
+  "theme": "mint",
+  "primaryColor": "#3b82f6",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/data-class",
+              "concepts/analyzers",
+              "concepts/immutability",
+              "concepts/algorithms"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-operations",
+              "guides/chaining-operations",
+              "guides/custom-analyzers",
+              "guides/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/data",
+              "api/algorithm"
+            ]
+          },
+          {
+            "group": "Analyzers",
+            "pages": [
+              "api/analyzers/overview",
+              "api/analyzers/indexby",
+              "api/analyzers/filter",
+              "api/analyzers/map",
+              "api/analyzers/reduce",
+              "api/analyzers/transform",
+              "api/analyzers/sort",
+              "api/analyzers/process"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/exceptions",
+              "api/utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Functional data manipulation with immutable operations",
+    "Chainable map, filter, reduce, and indexby operations",
+    "Custom analyzer pattern for extensible data transformations",
+    "Algorithm composition for complex data pipelines",
+    "Built-in exception handling and validation"
+  ],
+  "publicApiSurface": [
+    "Data",
+    "Data.indexby()",
+    "Data.map()",
+    "Data.filter()",
+    "Data.reduce()",
+    "Data.transform()",
+    "Data.sort()",
+    "Data.process()",
+    "Data.count()",
+    "Data.getraw()",
+    "AnalyzerIndexBy",
+    "AnalyzerFilter",
+    "AnalyzerMap",
+    "AnalyzerReduce",
+    "AnalyzerTransform",
+    "AnalyzerSort",
+    "AnalyzerProcess",
+    "Algorithm",
+    "Algorithm.add()",
+    "Algorithm.analyze()",
+    "display()"
+  ]
+}
